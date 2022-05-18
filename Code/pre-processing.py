@@ -1,3 +1,5 @@
 import pandas as pd
-df = pd.read_csv(r'autoencoder-IVS\Data\option data.csv')
-print(df[1,1])
+import numpy as np
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data.csv')
+df = df.to_numpy
+print(df[0:10,0:10])
