@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,6 +31,22 @@ if np.sum(SPX.Date == df.date.unique()) != np.max([SPX.shape[0],df.date.unique()
 
 # Get mid prices
 SPX['Mid'] = (SPX['High'] + SPX['Low'])/2
+
+# Once we have checked that the dates correspond, we can give the dates numbers (duration +- 3 mins)
+t = np.zeros(df.shape[0]).astype(int)
+count = 0
+for el in range(df.shape[0]):
+    if el == 0:
+        t[el] = count
+    elif df['date'][el] == df['date'][el-1]:
+        t[el] = count
+    else:
+        count += 1
+        t[el] = count
+df['t'] = t
+
+# Calculate moneyness as: stock price (mid) / strike price
+df['moneyness'] = SPX['Mid'][df['t']].reset_index(drop=True) / (df['strike_price']/1000)
 
 
 
