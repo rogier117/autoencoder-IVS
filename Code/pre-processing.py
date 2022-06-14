@@ -59,11 +59,19 @@ df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 # CHECKPOINT END
 
+# Riskfree rate
 r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data.csv')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 r = r[r.DATE.isin(SPX.Date)].reset_index(drop=True)
 
+# Midpoint option price
+df['price'] = (df['best_bid'] + df['best_offer'])/2
 
+# Remove options with price lower than 1/8
+df = df[df.price >= 0.125]
+
+# Remove unnecessary columns (ADD MORE COLUMNS TOMORROW)
+df = df.drop(columns=['issuer', 'exercise_style'])
 
 
 
