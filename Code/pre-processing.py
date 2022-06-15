@@ -13,11 +13,11 @@ import matplotlib.pyplot as plt
 # # Remove volume = 0 entries
 # df = df[df.volume != 0]
 
-# CHECKPOINT BEGIN
+# # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data volume.csv', index=False)
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data volume.csv')
-# CHECKPOINT END
-
+# # CHECKPOINT END
+#
 # # Import raw index data
 # SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data.csv', thousands=',')
 #
@@ -33,9 +33,6 @@ import matplotlib.pyplot as plt
 # if np.sum(SPX.Date == df.date.unique()) != np.max([SPX.shape[0],df.date.unique().shape[0]]):
 #     raise ValueError('Option and stock dates do not match.')
 #
-# # Get mid prices
-# SPX['Mid'] = (SPX['High'] + SPX['Low'])/2
-#
 # # Once we have checked that the dates correspond, we can give the dates numbers (duration +- 3 mins)
 # t = np.zeros(df.shape[0]).astype(int)
 # count = 0
@@ -49,14 +46,14 @@ import matplotlib.pyplot as plt
 #         t[_] = count
 # df['t'] = t
 #
-# # Calculate moneyness as: stock price (mid) / strike price
-# df['moneyness'] = SPX['Mid'][df['t']].reset_index(drop=True) / (df['strike_price']/1000)
-
-# CHECKPOINT BEGIN
+# # Calculate moneyness as: stock price (close) / strike price
+# df['moneyness'] = SPX['Close'][df['t']].reset_index(drop=True) / (df['strike_price']/1000)
+#
+# # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data volume moneyness.csv', index=False)
-# SPX.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\SPX data mid.csv', index=False)
+# SPX.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv', index=False)
 df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data volume moneyness.csv')
-SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data mid.csv')
+SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
 df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
@@ -66,8 +63,8 @@ SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data.csv')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 r = r[r.DATE.isin(SPX.Date)].reset_index(drop=True)
-r['DTB3'] = r['DTB3'].replace(['.'],'0.0')
-r['DTB3'] = r['DTB3'].astype(float)
+r['DTB3'] = pd.to_numeric(r['DTB3'], errors='coerce')
+r['DTB3'] = r['DTB3'].interpolate(method='linear', axis=0)
 
 # Midpoint option price
 df['price'] = (df['best_bid'] + df['best_offer']) / 2
@@ -81,7 +78,8 @@ df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatil
 
 # Find put-call pairs as closest to ATM for every time-to-maturity at each point in time
 df['moneynessdev'] = (df['moneyness'] - 1) ** 2
-df['q'] = 0
+qvector = np.zeros(df.shape[0])
+begintime = time.time()
 for _ in df.t.unique():
     temp = df[df.t == _]
     for tenor in temp.daystoex.unique():
@@ -98,15 +96,15 @@ for _ in df.t.unique():
                 else:
                     call = temp2.iloc[i+1]
                     put = temp2.iloc[i]
-                q = - (1 / (tenor/250)) * math.log((call.price - put.price + (call.strike_price/1000)**(-r.DTB3[_] * (tenor/250))) / SPX.Mid[_])
-                df.at['q', temp2.index.values] = q
+                q = - (1 / (tenor/252)) * math.log((call.price - put.price + (call.strike_price/1000) * math.exp(-(r.DTB3[_]/100) * (tenor/252))) / SPX.Close[_])
+                qvector[temp2.index.values] = q
             elif i == temp2.shape[0]-1:
                 finished = True
                 q = math.nan
-                df.at['q', temp2.index.values] = q
+                qvector[temp2.index.values] = q
             else:
                 i += 1
-
+total_time = time.time()-begintime
 
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
