@@ -107,6 +107,7 @@ for _ in tqdm(df.t.unique(), desc='day'):
                 qvector[temp2.index.values] = q
             else:
                 i += 1
+df['y'] = qvector
 total_time = time.time()-begintime
 
 # plot days to expiry histogram
