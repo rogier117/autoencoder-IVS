@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 # # Import raw option data
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data.csv')
@@ -71,6 +72,7 @@ df['price'] = (df['best_bid'] + df['best_offer']) / 2
 
 # Remove options with price lower than 1/8
 df = df[df.price >= 0.125]
+df = df.reset_index()
 
 # Remove unnecessary columns
 df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega', 'theta',
@@ -80,7 +82,7 @@ df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatil
 df['moneynessdev'] = (df['moneyness'] - 1) ** 2
 qvector = np.zeros(df.shape[0])
 begintime = time.time()
-for _ in df.t.unique():
+for _ in tqdm(df.t.unique(), desc='day'):
     temp = df[df.t == _]
     for tenor in temp.daystoex.unique():
         temp2 = temp[temp.daystoex == tenor]
@@ -88,7 +90,11 @@ for _ in df.t.unique():
         finished = False
         i = 0
         while not finished:
-            if temp2.moneyness.iloc[i] == temp2.moneyness.iloc[i+1] and temp2.cp_flag.iloc[i] != temp2.cp_flag.iloc[i+1]:
+            if i == temp2.shape[0]-1:
+                finished = True
+                q = math.nan
+                qvector[temp2.index.values] = q
+            elif temp2.moneyness.iloc[i] == temp2.moneyness.iloc[i+1] and temp2.cp_flag.iloc[i] != temp2.cp_flag.iloc[i+1]:
                 finished = True
                 if temp2.cp_flag.iloc[i] == 'C':
                     call = temp2.iloc[i]
@@ -97,10 +103,6 @@ for _ in df.t.unique():
                     call = temp2.iloc[i+1]
                     put = temp2.iloc[i]
                 q = - (1 / (tenor/252)) * math.log((call.price - put.price + (call.strike_price/1000) * math.exp(-(r.DTB3[_]/100) * (tenor/252))) / SPX.Close[_])
-                qvector[temp2.index.values] = q
-            elif i == temp2.shape[0]-1:
-                finished = True
-                q = math.nan
                 qvector[temp2.index.values] = q
             else:
                 i += 1
