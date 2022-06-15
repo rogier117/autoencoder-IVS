@@ -13,6 +13,7 @@ from tqdm import tqdm
 #
 # # Remove volume = 0 entries
 # df = df[df.volume != 0]
+# df = df.reset_index(drop=True)
 
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data volume.csv', index=False)
@@ -72,7 +73,7 @@ df['price'] = (df['best_bid'] + df['best_offer']) / 2
 
 # Remove options with price lower than 1/8
 df = df[df.price >= 0.125]
-df = df.reset_index()
+df = df.reset_index(drop=True)
 
 # Remove unnecessary columns
 df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega', 'theta',
