@@ -1,3 +1,4 @@
+import math
 import time
 
 import pandas as pd
@@ -6,6 +7,8 @@ import matplotlib.pyplot as plt
 
 # # Import raw option data
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data.csv')
+# df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega',
+#                       'theta', 'optionid', 'contract_size', 'forward_price', 'index_flag'])
 #
 # # Remove volume = 0 entries
 # df = df[df.volume != 0]
@@ -63,20 +66,46 @@ SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data.csv')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 r = r[r.DATE.isin(SPX.Date)].reset_index(drop=True)
+r['DTB3'] = r['DTB3'].replace(['.'],'0.0')
+r['DTB3'] = r['DTB3'].astype(float)
 
 # Midpoint option price
-df['price'] = (df['best_bid'] + df['best_offer'])/2
+df['price'] = (df['best_bid'] + df['best_offer']) / 2
 
 # Remove options with price lower than 1/8
 df = df[df.price >= 0.125]
 
-# Remove unnecessary columns (ADD MORE COLUMNS TOMORROW)
-df = df.drop(columns=['issuer', 'exercise_style'])
+# Remove unnecessary columns
+df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega', 'theta',
+                      'optionid', 'contract_size', 'forward_price', 'index_flag'])
 
-
-
-
-
+# Find put-call pairs as closest to ATM for every time-to-maturity at each point in time
+df['moneynessdev'] = (df['moneyness'] - 1) ** 2
+df['q'] = 0
+for _ in df.t.unique():
+    temp = df[df.t == _]
+    for tenor in temp.daystoex.unique():
+        temp2 = temp[temp.daystoex == tenor]
+        temp2 = temp2.sort_values(by='moneynessdev')
+        finished = False
+        i = 0
+        while not finished:
+            if temp2.moneyness.iloc[i] == temp2.moneyness.iloc[i+1] and temp2.cp_flag.iloc[i] != temp2.cp_flag.iloc[i+1]:
+                finished = True
+                if temp2.cp_flag.iloc[i] == 'C':
+                    call = temp2.iloc[i]
+                    put = temp2.iloc[i+1]
+                else:
+                    call = temp2.iloc[i+1]
+                    put = temp2.iloc[i]
+                q = - (1 / (tenor/250)) * math.log((call.price - put.price + (call.strike_price/1000)**(-r.DTB3[_] * (tenor/250))) / SPX.Mid[_])
+                df.at['q', temp2.index.values] = q
+            elif i == temp2.shape[0]-1:
+                finished = True
+                q = math.nan
+                df.at['q', temp2.index.values] = q
+            else:
+                i += 1
 
 
 # plot days to expiry histogram
