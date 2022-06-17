@@ -145,6 +145,17 @@ arbitrage = arbitrage.nonzero()[0]
 df = df.drop(index=arbitrage).reset_index(drop=True)
 
 
+# # CHECKPOINT BEGIN
+# df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv', index=False)
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv')
+SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
+r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
+df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
+SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
+r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
+# CHECKPOINT END
+
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
 # plt.show()
