@@ -1,5 +1,6 @@
 import math
 import time
+from scipy.stats import norm
 
 import pandas as pd
 import numpy as np
@@ -123,27 +124,27 @@ from tqdm import tqdm
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data dividend yield.csv', index=False)
 # r.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv', index=False)
-df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data dividend yield.csv')
-SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
-r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
-df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
-df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
-SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
-r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
-# CHECKPOINT END
-
-# No arbitrage conditions (+- 8:30 min)
-arbitrage = np.full(df.shape[0],False)
-for _ in tqdm(range(df.shape[0]), desc='option'):
-    if df.cp_flag[_] == 'C':
-        if df.price[_] < SPX.Close[df.t[_]] * math.exp(- df.q[_] * (df.daystoex[_]/252)) - (df.strike_price[_]/1000) * math.exp(- (r.DTB3[df.t[_]]/100) * (df.daystoex[_]/252)):
-            arbitrage[_] = True
-    else:
-        if df.price[_] < (df.strike_price[_]/1000) * math.exp(- (r.DTB3[df.t[_]]/100) * (df.daystoex[_]/252)) - SPX.Close[df.t[_]] * math.exp(- df.q[_] * (df.daystoex[_]/252)):
-            arbitrage[_] = True
-arbitrage = arbitrage.nonzero()[0]
-df = df.drop(index=arbitrage).reset_index(drop=True)
-
+# df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data dividend yield.csv')
+# SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
+# r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
+# df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+# df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
+# SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
+# r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
+# # CHECKPOINT END
+#
+# # No arbitrage conditions (+- 8:30 min)
+# arbitrage = np.full(df.shape[0],False)
+# for _ in tqdm(range(df.shape[0]), desc='option'):
+#     if df.cp_flag[_] == 'C':
+#         if df.price[_] < SPX.Close[df.t[_]] * math.exp(- df.q[_] * (df.daystoex[_]/252)) - (df.strike_price[_]/1000) * math.exp(- (r.DTB3[df.t[_]]/100) * (df.daystoex[_]/252)):
+#             arbitrage[_] = True
+#     else:
+#         if df.price[_] < (df.strike_price[_]/1000) * math.exp(- (r.DTB3[df.t[_]]/100) * (df.daystoex[_]/252)) - SPX.Close[df.t[_]] * math.exp(- df.q[_] * (df.daystoex[_]/252)):
+#             arbitrage[_] = True
+# arbitrage = arbitrage.nonzero()[0]
+# df = df.drop(index=arbitrage).reset_index(drop=True)
+#
 
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv', index=False)
@@ -155,6 +156,41 @@ df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 # CHECKPOINT END
+
+
+# Calculate Implied Volatilities using Newton Raphson algorithm
+df.sort_values(by=['t','strike_price','daystoex','cp_flag'], inplace=True)
+iv = np.zeros(df.shape[0])
+for _ in tqdm(range(df.shape[0]), desc='option'):
+    if not _ == 0 and df.t.iloc[_] == df.t.iloc[_-1] and df.strike_price.iloc[_] == df.strike_price.iloc[_-1] and df.daystoex.iloc[_] == df.daystoex.iloc[_-1]:
+        ivtemp = iv[_-1]
+    else:
+        if df.cp_flag.iloc[_] == 'P':
+            call_price = df.price.iloc[_] + SPX.Close.iloc[df.t.iloc[_]] * math.exp(- df.q.iloc[_] * (df.daystoex.iloc[_]/252)) - (df.strike_price.iloc[_]/1000) * math.exp(- (r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
+        else:
+            call_price = df.price.iloc[_]
+        ivtemp = math.sqrt((2 * math.pi)/(df.daystoex.iloc[_]/252)) * (call_price/SPX.Close.iloc[df.t.iloc[_]])
+        it = 0
+        # INCLUDE DIVIDEND YIELDS!!
+        d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_]/1000)) + ((r.DTB3.iloc[df.t.iloc[_]]/100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (df.daystoex.iloc[_]/252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_]/252)))
+        d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_]/252))
+        call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * norm.cdf(d1) - norm.cdf(d2) * (df.strike_price.iloc[_]/1000) * np.exp(-(r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
+        diff = abs(call_price - call)
+        while it < 100 and diff > 0.0001:
+            vega = np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * SPX.Close.iloc[df.t.iloc[_]] * norm.pdf(d1) * np.sqrt((df.daystoex.iloc[_]/252))
+            ivtemp = ivtemp - diff / vega
+            d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_] / 1000)) + (
+                        (r.DTB3.iloc[df.t.iloc[_]] / 100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (
+                              df.daystoex.iloc[_] / 252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_] / 252)))
+            d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_] / 252))
+            call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) * norm.cdf(
+                d1) - norm.cdf(d2) * (df.strike_price.iloc[_] / 1000) * np.exp(
+                -(r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
+            diff = abs(call_price - call)
+            it += 1
+    iv[_] = ivtemp
+
+
 
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
