@@ -162,6 +162,10 @@ r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 df.sort_values(by=['t','strike_price','daystoex','cp_flag'], inplace=True)
 iv = np.zeros(df.shape[0])
 for _ in tqdm(range(df.shape[0]), desc='option'):
+    # DEBUGGING
+    if _==71:
+        a=1
+
     if not _ == 0 and df.t.iloc[_] == df.t.iloc[_-1] and df.strike_price.iloc[_] == df.strike_price.iloc[_-1] and df.daystoex.iloc[_] == df.daystoex.iloc[_-1]:
         ivtemp = iv[_-1]
     else:
@@ -175,8 +179,8 @@ for _ in tqdm(range(df.shape[0]), desc='option'):
         d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_]/1000)) + ((r.DTB3.iloc[df.t.iloc[_]]/100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (df.daystoex.iloc[_]/252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_]/252)))
         d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_]/252))
         call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * norm.cdf(d1) - norm.cdf(d2) * (df.strike_price.iloc[_]/1000) * np.exp(-(r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
-        diff = abs(call_price - call)
-        while it < 100 and diff > 0.0001:
+        diff = call - call_price
+        while it < 100 and abs(diff) > 0.0001:
             vega = np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * SPX.Close.iloc[df.t.iloc[_]] * norm.pdf(d1) * np.sqrt((df.daystoex.iloc[_]/252))
             ivtemp = ivtemp - diff / vega
             d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_] / 1000)) + (
@@ -186,7 +190,7 @@ for _ in tqdm(range(df.shape[0]), desc='option'):
             call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) * norm.cdf(
                 d1) - norm.cdf(d2) * (df.strike_price.iloc[_] / 1000) * np.exp(
                 -(r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
-            diff = abs(call_price - call)
+            diff = call - call_price
             it += 1
     iv[_] = ivtemp
 
