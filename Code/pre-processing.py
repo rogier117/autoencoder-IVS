@@ -262,7 +262,7 @@ LTP = match_dates(good=SPX, good_colname='Date', new=LTP, new_colname='Date')
 LTP['Index'] = LTP['Index'].interpolate(method='linear', axis=0)
 
 # Realized Volatility (RVOL)
-RVOL = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\RVOL.csv', index_col=False)
+RVOL = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\RVOL.csv')
 RVOL = RVOL.rename(columns={'Unnamed: 0':'Date'})
 RVOL = RVOL[RVOL['Symbol'] == '.SPX'].reset_index()
 RVOL = RVOL[['Date', 'rv5']]
@@ -273,7 +273,19 @@ RVOL['Date'] = pd.to_datetime(RVOL['Date'], format="%Y-%m-%d")
 RVOL = match_dates(good=SPX, good_colname='Date', new=RVOL, new_colname='Date')
 RVOL['rv5'] = RVOL['rv5'].interpolate(method='linear', axis=0)
 
-# Economic Policy Uncertainty (EPC)
+# Economic Policy Uncertainty (EPU)
+EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
+EPU = EPU.rename(columns={'News_Based_Policy_Uncert_Index':'EPU'})
+EPU = EPU[:-1]
+EPU = EPU.astype({'Month': 'int32'})
+EPU['Year'] = EPU.Year.astype(str)
+EPU['Month'] = EPU.Month.astype(str)
+EPU['Date'] = EPU.Year + '-' + EPU.Month + '-1'
+EPU['Date'] = pd.to_datetime(EPU['Date'], format='%Y-%m-%d')
+EPU = EPU[['Date','EPU']]
+EPU = EPU[EPU.Date>] #NEEDS TO BE FINISHED
+
+# US News Index (USNI)
 
 
 # plot days to expiry histogram
