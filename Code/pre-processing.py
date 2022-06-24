@@ -3,6 +3,8 @@ import time
 from scipy.stats import norm
 
 import pandas as pd
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -12,10 +14,10 @@ from tqdm import tqdm
 # df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega',
 #                       'theta', 'optionid', 'contract_size', 'forward_price', 'index_flag'])
 #
-# # Remove volume = 0 entries
+# # Remove 'volume = 0' entries
 # df = df[df.volume != 0]
 # df = df.reset_index(drop=True)
-
+#
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data volume.csv', index=False)
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data volume.csv')
@@ -29,8 +31,16 @@ from tqdm import tqdm
 # df['exdate'] = pd.to_datetime(df['exdate'], format='%Y%m%d')
 # SPX['Date'] = pd.to_datetime(SPX['Date'], format='%m/%d/%Y')
 #
-# # Count (business) days to expiry
-# df['daystoex'] = np.busday_count(df['date'].values.astype('datetime64[D]'),df['exdate'].values.astype('datetime64[D]'))
+# # Count (business) days to expiry (+- 2 hours)
+# # df['daystoex'] = np.busday_count(df['date'].values.astype('datetime64[D]'),df['exdate'].values.astype('datetime64[D]'))
+# us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+# daystoex = np.zeros(df.shape[0])
+# for _ in tqdm(range(df.shape[0]),desc='_'):
+#     daystoex[_] = len(pd.date_range(start=df['date'][_],end=df['exdate'][_], freq=us_bd))
+# df['daystoex'] = daystoex
+# # Only keep if 5<=daystoex<=300
+# df = df[df.daystoex >= 5].reset_index(drop=True)
+# df = df[df.daystoex <= 300].reset_index(drop=True)
 #
 # # Check whether the option dates and stock dates are identical
 # if np.sum(SPX.Date == df.date.unique()) != np.max([SPX.shape[0],df.date.unique().shape[0]]):
@@ -51,6 +61,9 @@ from tqdm import tqdm
 #
 # # Calculate moneyness as: stock price (close) / strike price
 # df['moneyness'] = SPX['Close'][df['t']].reset_index(drop=True) / (df['strike_price']/1000)
+# # Only keep if 0.8<=moneyness<=1.5
+# df = df[df.moneyness >= 0.8].reset_index(drop=True)
+# df = df[df.moneyness <= 1.5].reset_index(drop=True)
 #
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data volume moneyness.csv', index=False)
@@ -79,8 +92,7 @@ from tqdm import tqdm
 # df['price'] = (df['best_bid'] + df['best_offer']) / 2
 #
 # # Remove options with price lower than 1/8
-# df = df[df.price >= 0.125]
-# df = df.reset_index(drop=True)
+# df = df[df.price >= 0.125].reset_index(drop=True)
 #
 # # Remove unnecessary columns
 # df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega', 'theta',
@@ -145,10 +157,57 @@ from tqdm import tqdm
 # arbitrage = arbitrage.nonzero()[0]
 # df = df.drop(index=arbitrage).reset_index(drop=True)
 #
-
+#
 # # CHECKPOINT BEGIN
 # df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv', index=False)
-df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv')
+# df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data arbitrage free.csv')
+# SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
+# r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
+# df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+# df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
+# SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
+# r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
+# # CHECKPOINT END
+#
+# # DEBUGGING
+# np.seterr(all='raise')
+#
+# # Calculate Implied Volatilities using Newton Raphson algorithm
+# df.sort_values(by=['t','strike_price','daystoex','cp_flag'], inplace=True)
+# iv = np.zeros(df.shape[0])
+# for _ in tqdm(range(df.shape[0]), desc='option'):
+#     if not _ == 0 and df.t.iloc[_] == df.t.iloc[_-1] and df.strike_price.iloc[_] == df.strike_price.iloc[_-1] and df.daystoex.iloc[_] == df.daystoex.iloc[_-1]:
+#         ivtemp = iv[_-1]
+#     else:
+#         if df.cp_flag.iloc[_] == 'P':
+#             call_price = df.price.iloc[_] + SPX.Close.iloc[df.t.iloc[_]] * math.exp(- df.q.iloc[_] * (df.daystoex.iloc[_]/252)) - (df.strike_price.iloc[_]/1000) * math.exp(- (r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
+#         else:
+#             call_price = df.price.iloc[_]
+#         ivtemp = np.maximum(math.sqrt((2 * math.pi)/(df.daystoex.iloc[_]/252)) * (call_price/SPX.Close.iloc[df.t.iloc[_]]), 0.1)
+#         it = 0
+#         d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_]/1000)) + ((r.DTB3.iloc[df.t.iloc[_]]/100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (df.daystoex.iloc[_]/252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_]/252)))
+#         d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_]/252))
+#         call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * norm.cdf(d1) - norm.cdf(d2) * (df.strike_price.iloc[_]/1000) * np.exp(-(r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
+#         diff = call - call_price
+#         while it < 100 and abs(diff) > 0.0001:
+#             vega = np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * SPX.Close.iloc[df.t.iloc[_]] * norm.pdf(d1) * np.sqrt((df.daystoex.iloc[_]/252))
+#             ivtemp = ivtemp - np.clip(diff / vega, -0.1, 0.1)
+#             d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_] / 1000)) + (
+#                         (r.DTB3.iloc[df.t.iloc[_]] / 100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (
+#                               df.daystoex.iloc[_] / 252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_] / 252)))
+#             d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_] / 252))
+#             call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) * norm.cdf(
+#                 d1) - norm.cdf(d2) * (df.strike_price.iloc[_] / 1000) * np.exp(
+#                 -(r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
+#             diff = call - call_price
+#             it += 1
+#     iv[_] = ivtemp
+# df['IV'] = iv
+# df.sort_index()
+#
+# # CHECKPOINT BEGIN
+# df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data IV.csv', index=False)
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV.csv')
 SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
 df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
@@ -157,44 +216,39 @@ SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 # CHECKPOINT END
 
-# DEBUGGING
-np.seterr(all='raise')
+# Import covariates
 
-# Calculate Implied Volatilities using Newton Raphson algorithm
-df.sort_values(by=['t','strike_price','daystoex','cp_flag'], inplace=True)
-iv = np.zeros(df.shape[0])
-for _ in tqdm(range(df.shape[0]), desc='option'):
-    # DEBUGGING
-    if _ == 87:
-        a = True
+# Function to let all dates correspond to SPX
+def match_dates(good, good_colname, new, new_colname):
+    us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+    first_date = pd.date_range(end=good[good_colname][0], periods=22, freq=us_bd)[0]
+    new = new[new[new_colname] >= first_date].reset_index(drop=True)
+    keep = np.full(new.shape[0], False)
+    for _ in range(new.shape[0]):
+        if new[new_colname][_] < good[good_colname][0] or new[new_colname][_] in good[good_colname].unique():
+            keep[_] = True
+    new = new[keep].reset_index(drop=True)
+    check = good[good_colname].isin(new[new_colname])
+    check = np.array([not elem for elem in check]).nonzero()[0]
+    if new.shape[0] < good.shape[0] + 21:
+        positions = np.arange(new.shape[0], good.shape[0] + 21)
+        for _ in range(good.shape[0] + 21 - new.shape[0]):
+            new.loc[positions[_]] = float("nan")
+            new.at[positions[_], new_colname] = good[good_colname][check[_]]
+    new = new.sort_values(by=new_colname, ignore_index=True)
+    return new
 
-    if not _ == 0 and df.t.iloc[_] == df.t.iloc[_-1] and df.strike_price.iloc[_] == df.strike_price.iloc[_-1] and df.daystoex.iloc[_] == df.daystoex.iloc[_-1]:
-        ivtemp = iv[_-1]
-    else:
-        if df.cp_flag.iloc[_] == 'P':
-            call_price = df.price.iloc[_] + SPX.Close.iloc[df.t.iloc[_]] * math.exp(- df.q.iloc[_] * (df.daystoex.iloc[_]/252)) - (df.strike_price.iloc[_]/1000) * math.exp(- (r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
-        else:
-            call_price = df.price.iloc[_]
-        ivtemp = math.sqrt((2 * math.pi)/(df.daystoex.iloc[_]/252)) * (call_price/SPX.Close.iloc[df.t.iloc[_]])
-        it = 0
-        # INCLUDE DIVIDEND YIELDS!!
-        d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_]/1000)) + ((r.DTB3.iloc[df.t.iloc[_]]/100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (df.daystoex.iloc[_]/252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_]/252)))
-        d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_]/252))
-        call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * norm.cdf(d1) - norm.cdf(d2) * (df.strike_price.iloc[_]/1000) * np.exp(-(r.DTB3.iloc[df.t.iloc[_]]/100) * (df.daystoex.iloc[_]/252))
-        diff = call - call_price
-        while it < 100 and abs(diff) > 0.0001:
-            vega = np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_]/252)) * SPX.Close.iloc[df.t.iloc[_]] * norm.pdf(d1) * np.sqrt((df.daystoex.iloc[_]/252))
-            ivtemp = ivtemp - np.clip(diff / vega, -0.1, 0.1)
-            d1 = (math.log(SPX.Close.iloc[df.t.iloc[_]] / (df.strike_price.iloc[_] / 1000)) + (
-                        (r.DTB3.iloc[df.t.iloc[_]] / 100) - df.q.iloc[_] + ivtemp ** 2 / 2) * (
-                              df.daystoex.iloc[_] / 252)) / (ivtemp * np.sqrt((df.daystoex.iloc[_] / 252)))
-            d2 = d1 - ivtemp * np.sqrt((df.daystoex.iloc[_] / 252))
-            call = SPX.Close.iloc[df.t.iloc[_]] * np.exp(-df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) * norm.cdf(
-                d1) - norm.cdf(d2) * (df.strike_price.iloc[_] / 1000) * np.exp(
-                -(r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
-            diff = call - call_price
-            it += 1
-    iv[_] = ivtemp
+# Volatility Index (VIX)
+VIX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\VIX_History.csv')
+VIX['DATE'] = pd.to_datetime(VIX['DATE'], format='%m/%d/%Y')
+VIX = match_dates(good=SPX, good_colname='Date', new=VIX, new_colname='DATE')
+VIX['CLOSE'] = VIX['CLOSE'].interpolate(method='linear', axis=0)
+
+
+# Left Tail Volatility (LTV)
+LTV = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTV.xls', header=0, decimal=',', thousands='.')
+LTV = LTV[0]
+LTV['Date'] = pd.to_datetime(LTV['Date'], format='%Y-%m-%d')
 
 
 
