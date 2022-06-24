@@ -214,6 +214,8 @@ df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
 df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
+
+
 # CHECKPOINT END
 
 # Import covariates
@@ -238,18 +240,40 @@ def match_dates(good, good_colname, new, new_colname):
     new = new.sort_values(by=new_colname, ignore_index=True)
     return new
 
+
 # Volatility Index (VIX)
 VIX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\VIX_History.csv')
 VIX['DATE'] = pd.to_datetime(VIX['DATE'], format='%m/%d/%Y')
 VIX = match_dates(good=SPX, good_colname='Date', new=VIX, new_colname='DATE')
 VIX['CLOSE'] = VIX['CLOSE'].interpolate(method='linear', axis=0)
 
-
-# Left Tail Volatility (LTV)
+# Left Tail Volatility (LTV) (ONLY GOES TO END OF 2019!!)
 LTV = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTV.xls', header=0, decimal=',', thousands='.')
 LTV = LTV[0]
 LTV['Date'] = pd.to_datetime(LTV['Date'], format='%Y-%m-%d')
+LTV = match_dates(good=SPX, good_colname='Date', new=LTV, new_colname='Date')
+LTV['Index'] = LTV['Index'].interpolate(method='linear', axis=0)
 
+# Left Tail Porbability (LTP) (ONLY GOES TO END OF 2019!!)
+LTP = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTP.xls', header=0, decimal=',', thousands='.')
+LTP = LTP[0]
+LTP['Date'] = pd.to_datetime(LTP['Date'], format='%Y-%m-%d')
+LTP = match_dates(good=SPX, good_colname='Date', new=LTP, new_colname='Date')
+LTP['Index'] = LTP['Index'].interpolate(method='linear', axis=0)
+
+# Realized Volatility (RVOL)
+RVOL = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\RVOL.csv', index_col=False)
+RVOL = RVOL.rename(columns={'Unnamed: 0':'Date'})
+RVOL = RVOL[RVOL['Symbol'] == '.SPX'].reset_index()
+RVOL = RVOL[['Date', 'rv5']]
+# Remove Timezone as it is of no importance
+for _ in range(RVOL.shape[0]):
+    RVOL.at[_, 'Date'] = RVOL.Date.iloc[_][:-6]
+RVOL['Date'] = pd.to_datetime(RVOL['Date'], format="%Y-%m-%d")
+RVOL = match_dates(good=SPX, good_colname='Date', new=RVOL, new_colname='Date')
+RVOL['rv5'] = RVOL['rv5'].interpolate(method='linear', axis=0)
+
+# Economic Policy Uncertainty (EPC)
 
 
 # plot days to expiry histogram
