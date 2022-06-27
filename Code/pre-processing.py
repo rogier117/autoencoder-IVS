@@ -3,7 +3,10 @@ import time
 from scipy.stats import norm
 
 import pandas as pd
+from datetime import datetime, timedelta
 from pandas.tseries.holiday import USFederalHolidayCalendar
+import pandas_market_calendars as mcal #CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
+
 from pandas.tseries.offsets import CustomBusinessDay
 import numpy as np
 import matplotlib.pyplot as plt
@@ -33,10 +36,10 @@ from tqdm import tqdm
 #
 # # Count (business) days to expiry (+- 2 hours)
 # # df['daystoex'] = np.busday_count(df['date'].values.astype('datetime64[D]'),df['exdate'].values.astype('datetime64[D]'))
-# us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+# nyse = mcal.get_calendar('NYSE')
 # daystoex = np.zeros(df.shape[0])
 # for _ in tqdm(range(df.shape[0]),desc='_'):
-#     daystoex[_] = len(pd.date_range(start=df['date'][_],end=df['exdate'][_], freq=us_bd))
+#     daystoex[_] = len(nyse.valid_days(start_date=df['date'][_],end_date=df['exdate'][_]) - 1
 # df['daystoex'] = daystoex
 # # Only keep if 5<=daystoex<=300
 # df = df[df.daystoex >= 5].reset_index(drop=True)
@@ -222,12 +225,15 @@ r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 
 # Function to let all dates correspond to SPX
 def match_dates(good, good_colname, new, new_colname):
-    us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
-    first_date = pd.date_range(end=good[good_colname][0], periods=22, freq=us_bd)[0]
-    new = new[new[new_colname] >= first_date].reset_index(drop=True)
+    # us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+    # first_date = pd.date_range(end=good[good_colname][0], periods=22, freq=us_bd)
+    nyse = mcal.get_calendar('NYSE')
+    first_date = nyse.valid_days(start_date=good[good_colname][0] - timedelta(days=40), end_date=good[good_colname][0])[-22]
+    pre_sample = nyse.valid_days(start_date=first_date, end_date=good[good_colname][0])
+    new = new[new[new_colname] >= pre_sample[0]].reset_index(drop=True)
     keep = np.full(new.shape[0], False)
     for _ in range(new.shape[0]):
-        if new[new_colname][_] < good[good_colname][0] or new[new_colname][_] in good[good_colname].unique():
+        if new[new_colname][_] in pre_sample or new[new_colname][_] in good[good_colname].unique():
             keep[_] = True
     new = new[keep].reset_index(drop=True)
     check = good[good_colname].isin(new[new_colname])
@@ -264,7 +270,7 @@ LTP['Index'] = LTP['Index'].interpolate(method='linear', axis=0)
 # Realized Volatility (RVOL)
 RVOL = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\RVOL.csv')
 RVOL = RVOL.rename(columns={'Unnamed: 0':'Date'})
-RVOL = RVOL[RVOL['Symbol'] == '.SPX'].reset_index()
+RVOL = RVOL[RVOL['Symbol'] == '.SPX'].reset_index(drop=True)
 RVOL = RVOL[['Date', 'rv5']]
 # Remove Timezone as it is of no importance
 for _ in range(RVOL.shape[0]):
@@ -273,17 +279,29 @@ RVOL['Date'] = pd.to_datetime(RVOL['Date'], format="%Y-%m-%d")
 RVOL = match_dates(good=SPX, good_colname='Date', new=RVOL, new_colname='Date')
 RVOL['rv5'] = RVOL['rv5'].interpolate(method='linear', axis=0)
 
-# Economic Policy Uncertainty (EPU)
+# Economic Policy Uncertainty (EPU) (monthly)
 EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
-EPU = EPU.rename(columns={'News_Based_Policy_Uncert_Index':'EPU'})
+EPU = EPU.rename(columns={'Three_Component_Index': 'EPU'})
 EPU = EPU[:-1]
+EPU['Month'] = EPU['Month'].shift(1)
+EPU['Year'] = EPU['Year'].shift(1)
+EPU = EPU.iloc[1: , :]
 EPU = EPU.astype({'Month': 'int32'})
 EPU['Year'] = EPU.Year.astype(str)
 EPU['Month'] = EPU.Month.astype(str)
 EPU['Date'] = EPU.Year + '-' + EPU.Month + '-1'
 EPU['Date'] = pd.to_datetime(EPU['Date'], format='%Y-%m-%d')
-EPU = EPU[['Date','EPU']]
-EPU = EPU[EPU.Date>] #NEEDS TO BE FINISHED
+EPU = EPU[['Date','EPU']].reset_index(drop=True)
+nyse = mcal.get_calendar('NYSE')
+dates = nyse.valid_days(start_date=EPU.Date[0],end_date=EPU.Date[EPU.shape[0]-1])
+dates = list(set(dates) - set(EPU.Date))
+for _ in range(len(dates)):
+    el = EPU.shape[0]
+    EPU.loc[el] = float("nan")
+    EPU.at[el, 'Date'] = dates[_]
+EPU = EPU.sort_values(by='Date').reset_index(drop=True)
+EPU = EPU.fillna(method='ffill')
+EPU = match_dates(good=SPX, good_colname='Date', new=EPU, new_colname='Date')
 
 # US News Index (USNI)
 
