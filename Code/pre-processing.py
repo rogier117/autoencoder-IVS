@@ -228,8 +228,8 @@ def match_dates(good, good_colname, new, new_colname):
     # us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
     # first_date = pd.date_range(end=good[good_colname][0], periods=22, freq=us_bd)
     nyse = mcal.get_calendar('NYSE')
-    first_date = nyse.valid_days(start_date=good[good_colname][0] - timedelta(days=40), end_date=good[good_colname][0])[-22]
-    pre_sample = nyse.valid_days(start_date=first_date, end_date=good[good_colname][0])
+    first_date = nyse.valid_days(start_date=good[good_colname][0] - timedelta(days=40), end_date=good[good_colname][0]).tz_localize(None)[-22]
+    pre_sample = nyse.valid_days(start_date=first_date, end_date=good[good_colname][0]).tz_localize(None)
     new = new[new[new_colname] >= pre_sample[0]].reset_index(drop=True)
     keep = np.full(new.shape[0], False)
     for _ in range(new.shape[0]):
@@ -283,6 +283,7 @@ RVOL['rv5'] = RVOL['rv5'].interpolate(method='linear', axis=0)
 EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
 EPU = EPU.rename(columns={'Three_Component_Index': 'EPU'})
 EPU = EPU[:-1]
+# EPU is shifted by one month because the information about a certain month is only available at the end of it
 EPU['Month'] = EPU['Month'].shift(1)
 EPU['Year'] = EPU['Year'].shift(1)
 EPU = EPU.iloc[1: , :]
@@ -293,7 +294,7 @@ EPU['Date'] = EPU.Year + '-' + EPU.Month + '-1'
 EPU['Date'] = pd.to_datetime(EPU['Date'], format='%Y-%m-%d')
 EPU = EPU[['Date','EPU']].reset_index(drop=True)
 nyse = mcal.get_calendar('NYSE')
-dates = nyse.valid_days(start_date=EPU.Date[0],end_date=EPU.Date[EPU.shape[0]-1])
+dates = nyse.valid_days(start_date=EPU.Date[0],end_date=EPU.Date[EPU.shape[0]-1]).tz_localize(None)
 dates = list(set(dates) - set(EPU.Date))
 for _ in range(len(dates)):
     el = EPU.shape[0]
@@ -302,9 +303,49 @@ for _ in range(len(dates)):
 EPU = EPU.sort_values(by='Date').reset_index(drop=True)
 EPU = EPU.fillna(method='ffill')
 EPU = match_dates(good=SPX, good_colname='Date', new=EPU, new_colname='Date')
+EPU['EPU'] = EPU['EPU'].interpolate(method='linear', axis=0)
 
 # US News Index (USNI)
+USNI = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\USNI.csv')
+USNI = USNI.rename(columns={'daily_policy_index': 'USNI'})
+USNI['year'] = USNI.year.astype(str)
+USNI['month'] = USNI.month.astype(str)
+USNI['day'] = USNI.day.astype(str)
+USNI['Date'] = USNI.year + '-' + USNI.month + '-' + USNI.day
+USNI['Date'] = pd.to_datetime(USNI['Date'], format='%Y-%m-%d')
+# USNI is shifted by one day because the information about a certain day is only available at the end of it
+USNI['Date'] = USNI['Date'].shift(1)
+USNI = USNI.iloc[1: , :]
+USNI = USNI[['Date','USNI']].reset_index(drop=True)
+USNI = match_dates(good=SPX, good_colname='Date', new=USNI, new_colname='Date')
+USNI['USNI'] = USNI['USNI'].interpolate(method='linear', axis=0)
 
+# Aruoba, Diebold and Scotti (2009) (ADS) business conditions index
+ADS = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\ADS.xlsx')
+ADS = ADS.rename(columns={'Unnamed: 0': 'Date', 'ADS_Index': 'ADS'})
+ADS['Date'] = pd.to_datetime(ADS['Date'], format='%Y:%m:%d')
+ADS = match_dates(good=SPX, good_colname='Date', new=ADS, new_colname='Date')
+ADS['ADS'] = ADS['ADS'].interpolate(method='linear', axis=0)
+
+# Term Spread first difference
+TMS = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\TMS.csv')
+TMS = TMS.rename(columns={'DATE': 'Date', 'T10Y2Y': 'TMS'})
+TMS['Date'] = pd.to_datetime(TMS['Date'], format='%Y-%m-%d')
+TMS['TMS'] = pd.to_numeric(TMS['TMS'], errors='coerce')
+TMS['TMS'] = TMS['TMS'].interpolate(method='linear', axis=0)
+TMS['delta_TMS'] = TMS.TMS.diff(1)
+TMS = match_dates(good=SPX, good_colname='Date', new=TMS, new_colname='Date')
+TMS['delta_TMS'] = TMS['delta_TMS'].interpolate(method='linear', axis=0)
+
+# Credit Spread first difference
+CRS = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\CRS.csv')
+CRS = CRS.rename(columns={'DATE': 'Date', 'BAMLH0A0HYM2': 'CRS'})
+CRS['Date'] = pd.to_datetime(CRS['Date'], format='%Y-%m-%d')
+CRS['CRS'] = pd.to_numeric(CRS['CRS'], errors='coerce')
+CRS['CRS'] = CRS['CRS'].interpolate(method='linear', axis=0)
+CRS['delta_CRS'] = CRS.CRS.diff(1)
+CRS = match_dates(good=SPX, good_colname='Date', new=CRS, new_colname='Date')
+CRS['delta_CRS'] = CRS['delta_CRS'].interpolate(method='linear', axis=0)
 
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
