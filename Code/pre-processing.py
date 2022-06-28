@@ -253,14 +253,14 @@ VIX['DATE'] = pd.to_datetime(VIX['DATE'], format='%m/%d/%Y')
 VIX = match_dates(good=SPX, good_colname='Date', new=VIX, new_colname='DATE')
 VIX['CLOSE'] = VIX['CLOSE'].interpolate(method='linear', axis=0)
 
-# Left Tail Volatility (LTV) (ONLY GOES TO END OF 2019!!)
+# Left Tail Volatility (LTV) (ONLY GOES TO END OF 2019!!) (THEREFORE PROBABLY WON'T INCLUDE)
 LTV = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTV.xls', header=0, decimal=',', thousands='.')
 LTV = LTV[0]
 LTV['Date'] = pd.to_datetime(LTV['Date'], format='%Y-%m-%d')
 LTV = match_dates(good=SPX, good_colname='Date', new=LTV, new_colname='Date')
 LTV['Index'] = LTV['Index'].interpolate(method='linear', axis=0)
 
-# Left Tail Porbability (LTP) (ONLY GOES TO END OF 2019!!)
+# Left Tail Porbability (LTP) (ONLY GOES TO END OF 2019!!) (THEREFORE PROBABLY WON'T INCLUDE)
 LTP = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTP.xls', header=0, decimal=',', thousands='.')
 LTP = LTP[0]
 LTP['Date'] = pd.to_datetime(LTP['Date'], format='%Y-%m-%d')
@@ -284,8 +284,7 @@ EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
 EPU = EPU.rename(columns={'Three_Component_Index': 'EPU'})
 EPU = EPU[:-1]
 # EPU is shifted by one month because the information about a certain month is only available at the end of it
-EPU['Month'] = EPU['Month'].shift(1)
-EPU['Year'] = EPU['Year'].shift(1)
+EPU['EPU'] = EPU['EPU'].shift(1)
 EPU = EPU.iloc[1: , :]
 EPU = EPU.astype({'Month': 'int32'})
 EPU['Year'] = EPU.Year.astype(str)
@@ -314,7 +313,7 @@ USNI['day'] = USNI.day.astype(str)
 USNI['Date'] = USNI.year + '-' + USNI.month + '-' + USNI.day
 USNI['Date'] = pd.to_datetime(USNI['Date'], format='%Y-%m-%d')
 # USNI is shifted by one day because the information about a certain day is only available at the end of it
-USNI['Date'] = USNI['Date'].shift(1)
+USNI['USNI'] = USNI['USNI'].shift(1)
 USNI = USNI.iloc[1: , :]
 USNI = USNI[['Date','USNI']].reset_index(drop=True)
 USNI = match_dates(good=SPX, good_colname='Date', new=USNI, new_colname='Date')
@@ -346,6 +345,60 @@ CRS['CRS'] = CRS['CRS'].interpolate(method='linear', axis=0)
 CRS['delta_CRS'] = CRS.CRS.diff(1)
 CRS = match_dates(good=SPX, good_colname='Date', new=CRS, new_colname='Date')
 CRS['delta_CRS'] = CRS['delta_CRS'].interpolate(method='linear', axis=0)
+
+# Federal Funds Effective Rate (FFER) (from FRED)
+FFER = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\FFER.csv')
+FFER = FFER.rename(columns={'DATE': 'Date', 'DFF': 'FFER'})
+FFER['Date'] = pd.to_datetime(FFER['Date'], format='%Y-%m-%d')
+FFER = match_dates(good=SPX, good_colname='Date', new=FFER, new_colname='Date')
+FFER['FFER'] = FFER['FFER'].interpolate(method='linear', axis=0)
+
+
+# Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity (US10YMY) (from FRED)
+US10YMY = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\US10YMY.csv')
+US10YMY = US10YMY.rename(columns={'DATE': 'Date', 'DGS10': 'US10YMY'})
+US10YMY['Date'] = pd.to_datetime(US10YMY['Date'], format='%Y-%m-%d')
+US10YMY['US10YMY'] = pd.to_numeric(US10YMY['US10YMY'], errors='coerce')
+US10YMY = match_dates(good=SPX, good_colname='Date', new=US10YMY, new_colname='Date')
+US10YMY['US10YMY'] = US10YMY['US10YMY'].interpolate(method='linear', axis=0)
+
+# Monthly US Inflation (USCPI) (from OECD)
+USCPI = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\USCPI.csv')
+USCPI = USCPI.rename(columns={'TIME': 'Date', 'Value': 'USCPI'})
+USCPI = USCPI[['Date', 'USCPI']]
+USCPI['Date'] = pd.to_datetime(USCPI['Date'], format='%Y-%m')
+# USCPI is shifted by one day because the information about a certain day is only available at the end of it
+USCPI['USCPI'] = USCPI['USCPI'].shift(1)
+nyse = mcal.get_calendar('NYSE')
+dates = nyse.valid_days(start_date=USCPI.Date[0],end_date=USCPI.Date[USCPI.shape[0]-1]).tz_localize(None)
+dates = list(set(dates) - set(USCPI.Date))
+for _ in range(len(dates)):
+    el = USCPI.shape[0]
+    USCPI.loc[el] = float("nan")
+    USCPI.at[el, 'Date'] = dates[_]
+USCPI = USCPI.sort_values(by='Date').reset_index(drop=True)
+USCPI = USCPI.fillna(method='ffill')
+USCPI = match_dates(good=SPX, good_colname='Date', new=USCPI, new_colname='Date')
+USCPI['USCPI'] = USCPI['USCPI'].interpolate(method='linear', axis=0)
+
+
+# Real GDP growth Brave-Butters-Kelley (GDPBBK) (monthly)
+GDPBBK = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\GDPBBK.csv')
+GDPBBK = GDPBBK.rename(columns={'DATE': 'Date', 'BBKMGDP': 'GDPBBK'})
+GDPBBK['Date'] = pd.to_datetime(GDPBBK['Date'], format='%Y-%m-%d')
+# GDPBBK is shifted by one day because the information about a certain day is only available at the end of it
+GDPBBK['GDPBBK'] = GDPBBK['GDPBBK'].shift(1)
+nyse = mcal.get_calendar('NYSE')
+dates = nyse.valid_days(start_date=GDPBBK.Date[0],end_date=GDPBBK.Date[GDPBBK.shape[0]-1]).tz_localize(None)
+dates = list(set(dates) - set(GDPBBK.Date))
+for _ in range(len(dates)):
+    el = GDPBBK.shape[0]
+    GDPBBK.loc[el] = float("nan")
+    GDPBBK.at[el, 'Date'] = dates[_]
+GDPBBK = GDPBBK.sort_values(by='Date').reset_index(drop=True)
+GDPBBK = GDPBBK.fillna(method='ffill')
+GDPBBK = match_dates(good=SPX, good_colname='Date', new=GDPBBK, new_colname='Date')
+GDPBBK['GDPBBK'] = GDPBBK['GDPBBK'].interpolate(method='linear', axis=0)
 
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
