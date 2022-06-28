@@ -5,7 +5,7 @@ import pandas as pd
 import pandas_market_calendars as mcal  # CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
 
 SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
-
+SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 
 # Import covariates
 
