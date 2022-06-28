@@ -3,6 +3,7 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
+from functools import reduce
 
 SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
@@ -12,8 +13,7 @@ SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 # Function to let all dates correspond to SPX
 def match_dates(good, good_colname, new, new_colname):
     nyse = mcal.get_calendar('NYSE')
-    first_date = \
-    nyse.valid_days(start_date=good[good_colname][0] - timedelta(days=40), end_date=good[good_colname][0]).tz_localize(
+    first_date = nyse.valid_days(start_date=good[good_colname][0] - timedelta(days=40), end_date=good[good_colname][0]).tz_localize(
         None)[-22]
     pre_sample = nyse.valid_days(start_date=first_date, end_date=good[good_colname][0]).tz_localize(None)
     new = new[new[new_colname] >= pre_sample[0]].reset_index(drop=True)
@@ -29,41 +29,46 @@ def match_dates(good, good_colname, new, new_colname):
         for _ in range(good.shape[0] + 21 - new.shape[0]):
             new.loc[positions[_]] = float("nan")
             new.at[positions[_], new_colname] = good[good_colname][check[_]]
+    new[new_colname] = pd.to_datetime(new[new_colname], format='%Y-%m-%d')
     new = new.sort_values(by=new_colname, ignore_index=True)
     return new
 
 
 # Volatility Index (VIX)
 VIX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\VIX_History.csv')
-VIX['DATE'] = pd.to_datetime(VIX['DATE'], format='%m/%d/%Y')
-VIX = match_dates(good=SPX, good_colname='Date', new=VIX, new_colname='DATE')
-VIX['CLOSE'] = VIX['CLOSE'].interpolate(method='linear', axis=0)
+VIX = VIX.rename(columns={'DATE': 'Date', 'CLOSE': 'VIX'})
+VIX = VIX[['Date','VIX']]
+VIX['Date'] = pd.to_datetime(VIX['Date'], format='%m/%d/%Y')
+VIX = match_dates(good=SPX, good_colname='Date', new=VIX, new_colname='Date')
+VIX['VIX'] = VIX['VIX'].interpolate(method='linear', axis=0)
 
 # Left Tail Volatility (LTV) (ONLY GOES TO END OF 2019!!) (THEREFORE PROBABLY WON'T INCLUDE)
 LTV = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTV.xls', header=0, decimal=',', thousands='.')
 LTV = LTV[0]
+LTV = LTV.rename(columns={'Index': 'LTV'})
 LTV['Date'] = pd.to_datetime(LTV['Date'], format='%Y-%m-%d')
 LTV = match_dates(good=SPX, good_colname='Date', new=LTV, new_colname='Date')
-LTV['Index'] = LTV['Index'].interpolate(method='linear', axis=0)
+LTV['LTV'] = LTV['LTV'].interpolate(method='linear', axis=0)
 
 # Left Tail Porbability (LTP) (ONLY GOES TO END OF 2019!!) (THEREFORE PROBABLY WON'T INCLUDE)
 LTP = pd.read_html(r'D:\Master Thesis\autoencoder-IVS\Data\LTP.xls', header=0, decimal=',', thousands='.')
 LTP = LTP[0]
+LTP = LTP.rename(columns={'Index': 'LTP'})
 LTP['Date'] = pd.to_datetime(LTP['Date'], format='%Y-%m-%d')
 LTP = match_dates(good=SPX, good_colname='Date', new=LTP, new_colname='Date')
-LTP['Index'] = LTP['Index'].interpolate(method='linear', axis=0)
+LTP['LTP'] = LTP['LTP'].interpolate(method='linear', axis=0)
 
 # Realized Volatility (RVOL)
 RVOL = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\RVOL.csv')
-RVOL = RVOL.rename(columns={'Unnamed: 0': 'Date'})
+RVOL = RVOL.rename(columns={'Unnamed: 0': 'Date', 'rv5': 'RVOL'})
 RVOL = RVOL[RVOL['Symbol'] == '.SPX'].reset_index(drop=True)
-RVOL = RVOL[['Date', 'rv5']]
+RVOL = RVOL[['Date', 'RVOL']]
 # Remove Timezone as it is of no importance
 for _ in range(RVOL.shape[0]):
     RVOL.at[_, 'Date'] = RVOL.Date.iloc[_][:-6]
 RVOL['Date'] = pd.to_datetime(RVOL['Date'], format="%Y-%m-%d")
 RVOL = match_dates(good=SPX, good_colname='Date', new=RVOL, new_colname='Date')
-RVOL['rv5'] = RVOL['rv5'].interpolate(method='linear', axis=0)
+RVOL['RVOL'] = RVOL['RVOL'].interpolate(method='linear', axis=0)
 
 # Economic Policy Uncertainty (EPU) (monthly)
 EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
@@ -118,9 +123,9 @@ TMS = TMS.rename(columns={'DATE': 'Date', 'T10Y2Y': 'TMS'})
 TMS['Date'] = pd.to_datetime(TMS['Date'], format='%Y-%m-%d')
 TMS['TMS'] = pd.to_numeric(TMS['TMS'], errors='coerce')
 TMS['TMS'] = TMS['TMS'].interpolate(method='linear', axis=0)
-TMS['delta_TMS'] = TMS.TMS.diff(1)
+TMS['TMS'] = TMS.TMS.diff(1)
 TMS = match_dates(good=SPX, good_colname='Date', new=TMS, new_colname='Date')
-TMS['delta_TMS'] = TMS['delta_TMS'].interpolate(method='linear', axis=0)
+TMS['TMS'] = TMS['TMS'].interpolate(method='linear', axis=0)
 
 # Credit Spread first difference
 CRS = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\CRS.csv')
@@ -128,9 +133,9 @@ CRS = CRS.rename(columns={'DATE': 'Date', 'BAMLH0A0HYM2': 'CRS'})
 CRS['Date'] = pd.to_datetime(CRS['Date'], format='%Y-%m-%d')
 CRS['CRS'] = pd.to_numeric(CRS['CRS'], errors='coerce')
 CRS['CRS'] = CRS['CRS'].interpolate(method='linear', axis=0)
-CRS['delta_CRS'] = CRS.CRS.diff(1)
+CRS['CRS'] = CRS.CRS.diff(1)
 CRS = match_dates(good=SPX, good_colname='Date', new=CRS, new_colname='Date')
-CRS['delta_CRS'] = CRS['delta_CRS'].interpolate(method='linear', axis=0)
+CRS['CRS'] = CRS['CRS'].interpolate(method='linear', axis=0)
 
 # Federal Funds Effective Rate (FFER) (from FRED)
 FFER = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\FFER.csv')
@@ -189,7 +194,14 @@ SPX2001 = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX los\SPX 2001.c
 SPX2001['Date'] = pd.to_datetime(SPX2001['Date'], format='%m/%d/%Y')
 SPX2001 = SPX2001.sort_values(by='Date').reset_index(drop=True)
 SPXM = pd.concat([SPX2001, SPX]).reset_index(drop=True)
-SPXM = SPXM[['Date', 'Close']]
 SPXM['SPXM'] = SPXM.Close.diff(21)
+SPXM = SPXM[['Date', 'SPXM']]
 SPXM = match_dates(good=SPX, good_colname='Date', new=SPXM, new_colname='Date')
 SPXM['SPXM'] = SPXM['SPXM'].interpolate(method='linear', axis=0)
+
+
+data_frames = [ADS,CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX]
+covariates = reduce(lambda left, right: pd.merge(left,right,on=['Date'],
+                                            how='outer'), data_frames)
+# covariates = pd.merge(ADS, [CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX], on='Date')
+#object dtype for: VIX, RVOL, LTV, LTP
