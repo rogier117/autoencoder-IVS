@@ -5,7 +5,7 @@ from scipy.stats import norm
 import pandas as pd
 from datetime import datetime, timedelta
 from pandas.tseries.holiday import USFederalHolidayCalendar
-import pandas_market_calendars as mcal #CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
+import pandas_market_calendars as mcal  # CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
 
 from pandas.tseries.offsets import CustomBusinessDay
 import numpy as np
@@ -217,9 +217,48 @@ df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
 df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
 r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
-
-
 # CHECKPOINT END
+
+# Transform all options to OTM options: moneyness<=1 ==> Call, moneyness>1 ==> Put (+- 8 minutes)
+prices = np.empty(df.shape[0])
+cp = []
+changed = np.full(df.shape[0],False)
+for _ in tqdm(range(df.shape[0]), desc='option'):
+    if df.moneyness.iloc[_] <= 1 and df.cp_flag.iloc[_] == 'P':
+        # Change put to call
+        prices[_] = df.price.iloc[_] + SPX.Close.iloc[df.t.iloc[_]] * math.exp(
+            - df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) - (
+                            df.strike_price.iloc[_] / 1000) * math.exp(
+            - (r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
+        cp.append('C')
+        changed[_] = True
+
+    elif df.moneyness[_] > 1 and df.cp_flag[_] == 'C':
+        # Change call to put
+        prices[_] = df.price.iloc[_] - SPX.Close.iloc[df.t.iloc[_]] * math.exp(
+            - df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) + (
+                            df.strike_price.iloc[_] / 1000) * math.exp(
+            - (r.DTB3.iloc[df.t.iloc[_]] / 100) * (df.daystoex.iloc[_] / 252))
+        cp.append('P')
+        changed[_] = True
+    else:
+        # Keep it as it is
+        prices[_] = df.price.iloc[_]
+        cp.append(df.cp_flag[_])
+
+df['price'] = prices
+df['cp_flag'] = cp
+
+# # CHECKPOINT BEGIN
+# df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv', index=False)
+# df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
+# SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
+# r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
+# df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+# df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
+# SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
+# r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
+# # CHECKPOINT END
 
 # plot days to expiry histogram
 # plt.hist(df['daystoex'], bins=50)
