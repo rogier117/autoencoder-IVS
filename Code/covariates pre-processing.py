@@ -194,7 +194,8 @@ SPX2001 = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX los\SPX 2001.c
 SPX2001['Date'] = pd.to_datetime(SPX2001['Date'], format='%m/%d/%Y')
 SPX2001 = SPX2001.sort_values(by='Date').reset_index(drop=True)
 SPXM = pd.concat([SPX2001, SPX]).reset_index(drop=True)
-SPXM['SPXM'] = SPXM.Close.diff(21)
+SPXM['SPXM'] = (SPXM.Close[21:].reset_index(drop=True) - SPXM.Close[:-21].reset_index(drop=True))/SPXM.Close[:-21].reset_index(drop=True)
+SPXM['SPXM'] = SPXM['SPXM'].shift(21)
 SPXM = SPXM[['Date', 'SPXM']]
 SPXM = match_dates(good=SPX, good_colname='Date', new=SPXM, new_colname='Date')
 SPXM['SPXM'] = SPXM['SPXM'].interpolate(method='linear', axis=0)
