@@ -39,7 +39,7 @@ from tqdm import tqdm
 # nyse = mcal.get_calendar('NYSE')
 # daystoex = np.zeros(df.shape[0])
 # for _ in tqdm(range(df.shape[0]),desc='_'):
-#     daystoex[_] = len(nyse.valid_days(start_date=df['date'][_],end_date=df['exdate'][_]) - 1
+#     daystoex[_] = len(nyse.valid_days(start_date=df['date'][_],end_date=df['exdate'][_])) - 1
 # df['daystoex'] = daystoex
 # # Only keep if 5<=daystoex<=300
 # df = df[df.daystoex >= 5].reset_index(drop=True)
@@ -96,10 +96,6 @@ from tqdm import tqdm
 #
 # # Remove options with price lower than 1/8
 # df = df[df.price >= 0.125].reset_index(drop=True)
-#
-# # Remove unnecessary columns
-# df = df.drop(columns=['issuer', 'exercise_style', 'open_interest', 'impl_volatility', 'delta', 'gamma', 'vega', 'theta',
-#                       'optionid', 'contract_size', 'forward_price', 'index_flag'])
 #
 # # Find put-call pairs as closest to ATM for every time-to-maturity at each point in time (+- 2:10 mins)
 # df['moneynessdev'] = (df['moneyness'] - 1) ** 2
@@ -223,8 +219,15 @@ r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 prices = np.empty(df.shape[0])
 cp = []
 changed = np.full(df.shape[0],False)
+duplicate = []
 for _ in tqdm(range(df.shape[0]), desc='option'):
-    if df.moneyness.iloc[_] <= 1 and df.cp_flag.iloc[_] == 'P':
+    if not _==(df.shape[0]-1) and df.t.iloc[_]==df.t.iloc[_+1] and df.strike_price.iloc[_] == df.strike_price.iloc[_+1] and df.daystoex.iloc[_] == df.daystoex.iloc[_+1]:
+        if (df.moneyness.iloc[_] <= 1 and df.cp_flag.iloc[_] == 'P') or (df.moneyness.iloc[_] > 1 and df.cp_flag.iloc[_] == 'C'):
+            duplicate.append(_)
+        else:
+            duplicate.append(_+1)
+        cp.append(df.cp_flag.iloc[_])
+    elif df.moneyness.iloc[_] <= 1 and df.cp_flag.iloc[_] == 'P':
         # Change put to call
         prices[_] = df.price.iloc[_] + SPX.Close.iloc[df.t.iloc[_]] * math.exp(
             - df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) - (
@@ -233,7 +236,7 @@ for _ in tqdm(range(df.shape[0]), desc='option'):
         cp.append('C')
         changed[_] = True
 
-    elif df.moneyness[_] > 1 and df.cp_flag[_] == 'C':
+    elif df.moneyness.iloc[_] > 1 and df.cp_flag.iloc[_] == 'C':
         # Change call to put
         prices[_] = df.price.iloc[_] - SPX.Close.iloc[df.t.iloc[_]] * math.exp(
             - df.q.iloc[_] * (df.daystoex.iloc[_] / 252)) + (
@@ -248,9 +251,10 @@ for _ in tqdm(range(df.shape[0]), desc='option'):
 
 df['price'] = prices
 df['cp_flag'] = cp
+df = df.drop(duplicate)
 
 # # CHECKPOINT BEGIN
-# df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv', index=False)
+df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv', index=False)
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
 # SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 # r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
