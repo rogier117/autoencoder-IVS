@@ -16,9 +16,9 @@ r['DATE'] = pd.to_datetime(r['DATE'], format='%Y-%m-%d')
 
 # Amount of different options per day
 amount=df.t.value_counts().sort_index()
-plt.plot(SPX.Date,a,'-',c='black',linewidth=0.5)
+plt.plot(SPX.Date,amount,'-',c='black',linewidth=0.5)
 plt.xlabel("Date")
-plt.ylabel("Number of different options")
+plt.ylabel("Number of options")
 plt.show()
 plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\options.png")
 
@@ -30,7 +30,9 @@ fig = plt.figure()
 ax = plt.axes(projection='3d')
 
 ax.plot_trisurf(temp.moneyness, temp.daystoex, temp.IV, cmap=cm.jet)
+ax.view_init(elev=14, azim=123)
 ax.set_title('surface')
 ax.set_xlabel("Moneyness")
 ax.set_ylabel("Tenor (days)")
 ax.set_zlabel("Implied Volatility")
+plt.savefig("3D plot.png")
