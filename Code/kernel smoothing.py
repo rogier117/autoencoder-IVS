@@ -11,6 +11,7 @@ from pandas.tseries.offsets import CustomBusinessDay
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from matplotlib import cm
 
 df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
 df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
@@ -41,7 +42,7 @@ df_bal['k_nor'] = (moneyness - 0.9) / 0.4
 
 IV = np.zeros(df_bal.shape[0])
 # b is the smoothing parameter
-b = 0.09
+b = 5/100
 for _ in tqdm(range(df_bal.shape[0]), desc='option'):
     if _ == 0 or not df_bal.t[_] == df_bal.t[_ - 1]:
         temp = df[df.t == df_bal.t[_]].reset_index(drop=True)
@@ -56,5 +57,6 @@ for _ in tqdm(range(df_bal.shape[0]), desc='option'):
     IV[_] = np.dot(temp.IV, kernel) / np.sum(kernel)
 
 df_bal['IV'] = IV
+
 df_bal.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv', index=False)
 
