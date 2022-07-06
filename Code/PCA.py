@@ -12,23 +12,15 @@ dataset = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 
 # distributing the dataset into two components X and Y
 X = dataset.values
-# Splitting the X and Y into the
-# Training set and Testing set
-
-
 X_train, X_test = train_test_split(X, test_size = 0.15, shuffle=False)
+
 # performing preprocessing part
-
 sc = StandardScaler()
-
 X_train = sc.fit_transform(X_train)
 X_test = sc.transform(X_test)
-# Applying PCA function on training
-# and testing set of X component
 
-
-pca = PCA(n_components = 3)
-
+# applying PCA
+pca = PCA(n_components=3)
 f_train = pca.fit_transform(X_train)
 f_test = pca.transform(X_test)
 
