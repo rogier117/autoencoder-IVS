@@ -95,13 +95,47 @@ ax.set_zlabel("Implied Volatility")
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\3D plot balanced not zoom.png")
 
 # Plot the characteristics of the IVS over time: Level, skew, term structure.
+# Level
 level = np.zeros(SPX.shape[0])
 for _ in range(len(level)):
     temp = df_bal[df_bal.t == _]
     level[_] = np.mean(temp.IV)
 
 plt.figure()
-plt.plot(SPX.Date, level)
+plt.plot(SPX.Date, level, '-', c='black', linewidth=0.5)
 plt.xlabel("Date")
+plt.ylabel("IV level")
 plt.show()
+plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV level.png")
+
+# Skew
+skew = np.zeros(SPX.shape[0])
+for _ in range(len(skew)):
+    temp = df_bal[df_bal.t == _]
+    high = temp[temp.moneyness == np.max(temp.moneyness)].IV.reset_index(drop=True)
+    low = temp[temp.moneyness == np.min(temp.moneyness)].IV.reset_index(drop=True)
+    skew[_] = np.mean(high - low)
+
+plt.figure()
+plt.plot(SPX.Date, skew, '-', c='black', linewidth=0.5)
+plt.xlabel("Date")
+plt.ylabel("IV skew")
+plt.show()
+plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV skew.png")
+
+# Term Structure
+term_structure = np.zeros(SPX.shape[0])
+for _ in range(len(term_structure)):
+    temp = df_bal[df_bal.t == _]
+    long = temp[temp.daystoex == np.max(temp.daystoex)].IV.reset_index(drop=True)
+    short = temp[temp.daystoex == np.min(temp.daystoex)].IV.reset_index(drop=True)
+    term_structure[_] = np.mean(long - short)
+
+plt.figure()
+plt.plot(SPX.Date, term_structure, '-', c='black', linewidth=0.5)
+plt.xlabel("Date")
+plt.ylabel("IV term structure")
+plt.show()
+plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV term structure.png")
+
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IVS characteristics.png")
