@@ -70,30 +70,30 @@ RVOL['Date'] = pd.to_datetime(RVOL['Date'], format="%Y-%m-%d")
 RVOL = match_dates(good=SPX, good_colname='Date', new=RVOL, new_colname='Date')
 RVOL['RVOL'] = RVOL['RVOL'].interpolate(method='linear', axis=0)
 
-# Economic Policy Uncertainty (EPU) (monthly)
-EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
-EPU = EPU.rename(columns={'Three_Component_Index': 'EPU'})
-EPU = EPU[:-1]
-# EPU is shifted by one month because the information about a certain month is only available at the end of it
-EPU['EPU'] = EPU['EPU'].shift(1)
-EPU = EPU.iloc[1:, :]
-EPU = EPU.astype({'Month': 'int32'})
-EPU['Year'] = EPU.Year.astype(str)
-EPU['Month'] = EPU.Month.astype(str)
-EPU['Date'] = EPU.Year + '-' + EPU.Month + '-1'
-EPU['Date'] = pd.to_datetime(EPU['Date'], format='%Y-%m-%d')
-EPU = EPU[['Date', 'EPU']].reset_index(drop=True)
-nyse = mcal.get_calendar('NYSE')
-dates = nyse.valid_days(start_date=EPU.Date[0], end_date=EPU.Date[EPU.shape[0] - 1]).tz_localize(None)
-dates = list(set(dates) - set(EPU.Date))
-for _ in range(len(dates)):
-    el = EPU.shape[0]
-    EPU.loc[el] = float("nan")
-    EPU.at[el, 'Date'] = dates[_]
-EPU = EPU.sort_values(by='Date').reset_index(drop=True)
-EPU = EPU.fillna(method='ffill')
-EPU = match_dates(good=SPX, good_colname='Date', new=EPU, new_colname='Date')
-EPU['EPU'] = EPU['EPU'].interpolate(method='linear', axis=0)
+# # Economic Policy Uncertainty (EPU) (monthly) (DO NOT USE)
+# EPU = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\EPU.xlsx')
+# EPU = EPU.rename(columns={'Three_Component_Index': 'EPU'})
+# EPU = EPU[:-1]
+# # EPU is shifted by one month because the information about a certain month is only available at the end of it
+# EPU['EPU'] = EPU['EPU'].shift(1)
+# EPU = EPU.iloc[1:, :]
+# EPU = EPU.astype({'Month': 'int32'})
+# EPU['Year'] = EPU.Year.astype(str)
+# EPU['Month'] = EPU.Month.astype(str)
+# EPU['Date'] = EPU.Year + '-' + EPU.Month + '-1'
+# EPU['Date'] = pd.to_datetime(EPU['Date'], format='%Y-%m-%d')
+# EPU = EPU[['Date', 'EPU']].reset_index(drop=True)
+# nyse = mcal.get_calendar('NYSE')
+# dates = nyse.valid_days(start_date=EPU.Date[0], end_date=EPU.Date[EPU.shape[0] - 1]).tz_localize(None)
+# dates = list(set(dates) - set(EPU.Date))
+# for _ in range(len(dates)):
+#     el = EPU.shape[0]
+#     EPU.loc[el] = float("nan")
+#     EPU.at[el, 'Date'] = dates[_]
+# EPU = EPU.sort_values(by='Date').reset_index(drop=True)
+# EPU = EPU.fillna(method='ffill')
+# EPU = match_dates(good=SPX, good_colname='Date', new=EPU, new_colname='Date')
+# EPU['EPU'] = EPU['EPU'].interpolate(method='linear', axis=0)
 
 # US News Index (USNI)
 USNI = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\USNI.csv')
@@ -110,12 +110,12 @@ USNI = USNI[['Date', 'USNI']].reset_index(drop=True)
 USNI = match_dates(good=SPX, good_colname='Date', new=USNI, new_colname='Date')
 USNI['USNI'] = USNI['USNI'].interpolate(method='linear', axis=0)
 
-# Aruoba, Diebold and Scotti (2009) (ADS) business conditions index
-ADS = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\ADS.xlsx')
-ADS = ADS.rename(columns={'Unnamed: 0': 'Date', 'ADS_Index': 'ADS'})
-ADS['Date'] = pd.to_datetime(ADS['Date'], format='%Y:%m:%d')
-ADS = match_dates(good=SPX, good_colname='Date', new=ADS, new_colname='Date')
-ADS['ADS'] = ADS['ADS'].interpolate(method='linear', axis=0)
+# Aruoba, Diebold and Scotti (2009) business conditions index (BCI)
+BCI = pd.read_excel(r'D:\Master Thesis\autoencoder-IVS\Data\BCI.xlsx')
+BCI = BCI.rename(columns={'Unnamed: 0': 'Date', 'ADS_Index': 'BCI'})
+BCI['Date'] = pd.to_datetime(BCI['Date'], format='%Y:%m:%d')
+BCI = match_dates(good=SPX, good_colname='Date', new=BCI, new_colname='Date')
+BCI['BCI'] = BCI['BCI'].interpolate(method='linear', axis=0)
 
 # Term Spread first difference
 TMS = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\TMS.csv')
@@ -171,7 +171,7 @@ USCPI = USCPI.fillna(method='ffill')
 USCPI = match_dates(good=SPX, good_colname='Date', new=USCPI, new_colname='Date')
 USCPI['USCPI'] = USCPI['USCPI'].interpolate(method='linear', axis=0)
 
-# Real GDP growth Brave-Butters-Kelley (GDPBBK) (monthly)
+# Real GDP growth Brave-Butters-Kelley (GDPBBK) (monthly) (UNSURE IF USE BECAUSE OF FORWARD LOOKING BIAS)
 GDPBBK = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\GDPBBK.csv')
 GDPBBK = GDPBBK.rename(columns={'DATE': 'Date', 'BBKMGDP': 'GDPBBK'})
 GDPBBK['Date'] = pd.to_datetime(GDPBBK['Date'], format='%Y-%m-%d')
@@ -201,8 +201,8 @@ SPXM = match_dates(good=SPX, good_colname='Date', new=SPXM, new_colname='Date')
 SPXM['SPXM'] = SPXM['SPXM'].interpolate(method='linear', axis=0)
 
 
-data_frames = [ADS,CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX]
+data_frames = [BCI,CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX]
 covariates = reduce(lambda left, right: pd.merge(left,right,on=['Date'],
                                             how='outer'), data_frames)
-# covariates = pd.merge(ADS, [CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX], on='Date')
+# covariates = pd.merge(BCI, [CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX], on='Date')
 #object dtype for: VIX, RVOL, LTV, LTP
