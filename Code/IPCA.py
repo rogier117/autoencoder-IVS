@@ -51,15 +51,15 @@ Gamma, Factors = regr.get_factors(label_ind=True)
 alldates = np.array([x[1] for x in X_test.index])
 dates = np.unique(alldates)
 
-n = np.zeros(len(dates)).astype(int)
-for _ in range(len(dates)):
-    n[_] = np.sum(alldates == dates[_])
+# n = np.zeros(len(dates)).astype(int)
+# for _ in range(len(dates)):
+#     n[_] = np.sum(alldates == dates[_])
 
 y_hat = np.zeros(y_test.shape[0])
 begin = 0
 for date in dates:
-    end = begin + n[_]
-    el = (alldates == date).nonzero()
+    el = (alldates == date).nonzero()[0]
+    end = begin + len(el)
     y_hat_temp = regr.predictOOS(X=X_test.iloc[el], y=y_test.iloc[el])
     y_hat_temp = [x[0] for x in y_hat_temp]
     y_hat[begin:end] = y_hat_temp
