@@ -30,6 +30,12 @@ df_bal.insert(0, 'ID', df_bal.pop('ID'))
 for col in covariates.columns:
     df_bal[col] = covariates[col].repeat(gridsize).reset_index(drop=True)
 
+# ADD COVARIATES WHICH MODEL THE NONLINEARITIES WITHIN THE MONEYNESS: (moneyness - 1)^2, moneyness * tau(, tau^2)
+df_bal['moneynessdev'] = (df_bal.moneyness - 1)**2
+df_bal['crossterm'] = df_bal.moneyness * df_bal.daystoex
+df_bal['daystoexsq'] = df_bal.daystoex ** 2
+
+
 cut_off = df_bal.Date.unique()[round(len(df_bal.Date.unique()) * 0.8)]
 X_train = df_bal[df_bal.Date <= cut_off]
 X_test = df_bal[df_bal.Date > cut_off]
@@ -56,11 +62,12 @@ dates = np.unique(alldates)
 #     n[_] = np.sum(alldates == dates[_])
 
 y_hat = np.zeros(y_test.shape[0])
-begin = 0
+y_hat[:] = np.NaN
+# begin = 0
 for date in dates:
     el = (alldates == date).nonzero()[0]
-    end = begin + len(el)
+    # end = begin + len(el)
     y_hat_temp = regr.predictOOS(X=X_test.iloc[el], y=y_test.iloc[el])
     y_hat_temp = [x[0] for x in y_hat_temp]
-    y_hat[begin:end] = y_hat_temp
-    begin = end
+    y_hat[el] = y_hat_temp
+    # begin = end
