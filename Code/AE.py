@@ -16,6 +16,16 @@ from tensorflow import keras
 from keras import layers
 
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
+X = np.array(X)
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
+
+y = X.flatten()
+
+moneyness = np.array(df.moneyness)
+tenor = np.array(df.daystoex)
+char = np.append(moneyness[:,None], tenor[:,None], axis=1)
+
+X = np.repeat(X, X.shape[1], axis=0)
 
 
 # This is the size of our encoded representations
@@ -29,7 +39,7 @@ encoded = layers.Dense(encoding_dim, activation='relu')(input_img)
 # Add inputs to decoder
 merge = layers.Concatenate()([encoded, input_2])
 # "decoded" is the lossy reconstruction of the input
-decoded = layers.Dense(42, activation='sigmoid')(merge)
+decoded = layers.Dense(1, activation='sigmoid')(merge)
 
 # This model maps an input to its reconstruction
 autoencoder = keras.Model(inputs=[input_img, input_2], outputs=decoded)
@@ -46,8 +56,7 @@ autoencoder = keras.Model(inputs=[input_img, input_2], outputs=decoded)
 
 autoencoder.compile(optimizer='adam', loss='mean_squared_error')
 
-# autoencoder.fit([X_train, char], X_train_adj,
-#                 epochs=50,
-#                 batch_size=256,
-#                 shuffle=True,
-#                 validation_data=(X_test, X_test_adj))
+autoencoder.fit([X, char], y,
+                epochs=3,
+                batch_size=42,
+                shuffle=True,)
