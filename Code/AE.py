@@ -32,17 +32,21 @@ X = np.repeat(X, X.shape[1], axis=0)
 encoding_dim = 3  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
 
 # This is our input image
-input_img = keras.Input(shape=(42,))
+input = keras.Input(shape=(42,))
 input_2 = keras.Input(shape=(2,))
 # "encoded" is the encoded representation of the input
-encoded = layers.Dense(encoding_dim, activation='relu')(input_img)
+encoded = layers.Dense(21, activation='relu')(input)
+
+encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded)
 # Add inputs to decoder
-merge = layers.Concatenate()([encoded, input_2])
+merge = layers.Concatenate()([encoded2, input_2])
 # "decoded" is the lossy reconstruction of the input
-decoded = layers.Dense(1, activation='sigmoid')(merge)
+decoded = layers.Dense(21, activation='relu')(merge)
+
+decoded2 = layers.Dense(1, activation='sigmoid')(decoded)
 
 # This model maps an input to its reconstruction
-autoencoder = keras.Model(inputs=[input_img, input_2], outputs=decoded)
+autoencoder = keras.Model(inputs=[input, input_2], outputs=decoded2)
 
 # # This model maps an input to its encoded representation
 # encoder = keras.Model(input_img, encoded)
