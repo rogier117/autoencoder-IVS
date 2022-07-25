@@ -254,7 +254,7 @@ df['cp_flag'] = cp
 df = df.drop(duplicate)
 
 # # CHECKPOINT BEGIN
-df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv', index=False)
+df.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv', index=False)
 # df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
 # SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 # r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')

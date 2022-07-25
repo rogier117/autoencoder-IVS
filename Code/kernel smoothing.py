@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from matplotlib import cm
 
-df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
 df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
 df['exdate'] = pd.to_datetime(df['exdate'], format='%Y-%m-%d')
 
