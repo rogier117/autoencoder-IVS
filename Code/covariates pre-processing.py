@@ -201,8 +201,9 @@ SPXM = match_dates(good=SPX, good_colname='Date', new=SPXM, new_colname='Date')
 SPXM['SPXM'] = SPXM['SPXM'].interpolate(method='linear', axis=0)
 
 
-data_frames = [BCI,CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX]
+data_frames = [BCI,CRS,FFER,GDPBBK,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX]
 covariates = reduce(lambda left, right: pd.merge(left,right,on=['Date'],
                                             how='outer'), data_frames)
+covariates.to_csv(path_or_buf=r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv', index=False)
 # covariates = pd.merge(BCI, [CRS,EPU,FFER,GDPBBK,LTP,LTV,RVOL,SPXM,TMS,US10YMY,USCPI,USNI,VIX], on='Date')
 #object dtype for: VIX, RVOL, LTV, LTP
