@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import scipy.stats as stats
 from tqdm import tqdm
 
-df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data IV OTM.csv')
+df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
 df_bal = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
 SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
 r = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\riskfree rate data cleaned.csv')
@@ -108,7 +108,7 @@ plt.ylabel("IV level")
 plt.show()
 plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV level.png")
 
-# Skew
+# Skew (STILL NOT SURE IF IT IS RIGHT)
 skew = np.zeros(SPX.shape[0])
 for _ in range(len(skew)):
     temp = df_bal[df_bal.t == _]
