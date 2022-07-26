@@ -47,7 +47,7 @@ def ipca_train(X_train, y_train, n_factors=3, max_iter=200):
     return model
 
 
-def balanced_ipca_test(X_test, y_test, model):
+def ipca_test(X_test, y_test, model):
     alldates = np.array([x[1] for x in X_test.index])
     dates = np.unique(alldates)
 
@@ -67,9 +67,8 @@ def balanced_ipca_test(X_test, y_test, model):
 #
 # X_train, y_train, X_test, y_test = balanced_preprocessing(df_bal=df_bal, covariates=covariates, split=0.8)
 # model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=100)
-# y_hat = balanced_ipca_test(X_test=X_test, y_test=y_test, model=model)
+# y_hat = ipca_test(X_test=X_test, y_test=y_test, model=model)
 # Gamma, Factors = model.get_factors(label_ind=True)
-
 
 
 # Use unbalanced data for training
@@ -121,6 +120,6 @@ covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv'
 covariates = covariates.drop(columns='Date')
 
 X_train, y_train, X_test, y_test = unbalanced_preprocessing(df_unb, covariates, split=0.8)
-model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=100)
-y_hat_unb = balanced_ipca_test(X_test=X_test, y_test=y_test, model=model)
+model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=10)
+y_hat_unb = ipca_test(X_test=X_test, y_test=y_test, model=model)
 Gamma, Factors = model.get_factors(label_ind=True)
