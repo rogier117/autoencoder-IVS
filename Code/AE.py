@@ -81,11 +81,44 @@ def test_ae(model, X_test, char_test):
     return y_hat
 
 
+def unbalanced_test_ae(model, df_unb, X, split=0.8):
+    cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+    df_unb = df_unb[df_unb.t > cut_off]
+
+    X = np.array(X)
+    X = X[(cut_off+1):, :]
+
+    moneyness = np.array(df_unb.moneyness)
+    tenor = np.array(df_unb.daystoex)
+    char_test = np.append(moneyness[:, None], tenor[:, None], axis=1)
+
+    X_test = np.zeros((df_unb.shape[0],X.shape[1]))
+
+    all_t = df_unb.t.unique()
+    for _ in range(len(all_t)):
+        el = np.where(df_unb.t == all_t[_])[0]
+        X_test[el, :] = X[_, :]
+
+    y_hat = model.predict([X_test,char_test])
+    return y_hat
+
+
+
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
 
-X_train, X_test, char_train, char_test, y_train, y_test = ae_preprocessing(X=X, df=df, split=0.8)
+split = 0.8
+
+X_train, X_test, char_train, char_test, y_train, y_test = ae_preprocessing(X=X, df=df, split=split)
 model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+
+# Train model
 trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-                         y_train=y_train, y_test=y_test, epochs=5, batch_size=42)
+                         y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
+
+# Test on balanced data
 y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
+
+# Test on unbalanced data
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+y_hat_unb = unbalanced_test_ae(model=trained_model, X=X, df_unb=df_unb, split=split)
