@@ -103,6 +103,19 @@ def unbalanced_test_ae(model, df_unb, X, split=0.8):
     return y_hat
 
 
+def direct_forecasting_preprocessing(X_train, X_test, char_train, char_test, y_train, y_test, horizon=1):
+    gridsize = X_train.shape[1]
+
+    X_test = np.append(X_train[-(gridsize*horizon):, :], X_test[:-(gridsize*horizon), :], axis=0)
+    char_test = np.append(char_train[-(gridsize * horizon):, :], char_test[:-(gridsize * horizon), :], axis=0)
+
+    X_train = X_train[:-(gridsize*horizon), :]
+    char_train = char_train[:-(gridsize*horizon), :]
+
+    y_train = y_train[(gridsize*horizon):]
+
+    return X_train, X_test, char_train, char_test, y_train, y_test
+
 
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
@@ -122,3 +135,22 @@ y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
 # Test on unbalanced data
 df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
 y_hat_unb = unbalanced_test_ae(model=trained_model, X=X, df_unb=df_unb, split=split)
+
+
+# Direct forecast
+X_train, X_test, char_train, char_test, y_train, y_test = direct_forecasting_preprocessing(X_train=X_train,
+                                                                                           X_test=X_test,
+                                                                                           char_train=char_train,
+                                                                                           char_test=char_test,
+                                                                                           y_train=y_train,
+                                                                                           y_test=y_test,
+                                                                                           horizon=1)
+
+model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+
+# Train model
+trained_model_f = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+                           y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
+
+# Test on balanced data
+y_hat = test_ae(model=trained_model_f, X_test=X_test, char_test=char_test)
