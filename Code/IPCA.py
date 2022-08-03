@@ -60,16 +60,6 @@ def ipca_test(X_test, y_test, model):
         y_hat[el] = y_hat_temp
     return y_hat
 
-# df_bal = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
-# df_bal['Date'] = pd.to_datetime(df_bal['Date'], format='%Y-%m-%d')
-# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-# covariates = covariates.drop(columns='Date')
-#
-# X_train, y_train, X_test, y_test = balanced_preprocessing(df_bal=df_bal, covariates=covariates, split=0.8)
-# model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=100)
-# y_hat = ipca_test(X_test=X_test, y_test=y_test, model=model)
-# Gamma, Factors = model.get_factors(label_ind=True)
-
 
 # Use unbalanced data for training
 
@@ -87,7 +77,7 @@ def unbalanced_preprocessing(df_unb, covariates, split=0.8):
     temp2 = covariates.values
     date = df_unb.Date.values
     for _ in range(len(temp)):
-        temp[_, :] = temp2[date[_],:]
+        temp[_, :] = temp2[date[_], :]
 
     df_unb[covariates.columns] = temp
 
@@ -113,13 +103,53 @@ def unbalanced_preprocessing(df_unb, covariates, split=0.8):
     return X_train, y_train, X_test, y_test
 
 
-df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
+def forecast_preprocessing(X_train_in, y_train_in, X_test_in, y_test_in, horizon):
+    last_date = np.max(X_train_in.index.get_level_values('Date'))
+    last_date_test = np.max(X_test_in.index.get_level_values('Date'))
 
+    X_train = X_train_in[X_train_in.index.get_level_values('Date') <= last_date - horizon]
+    y_train = y_train_in[y_train_in.index.get_level_values('Date') >= horizon]
+
+    y_train.index = y_train.index.set_levels(y_train.index.levels[1] - horizon, level=1)
+
+    X_test1 = X_train_in[X_train_in.index.get_level_values('Date') > last_date - horizon]
+    X_test2 = X_test_in[X_test_in.index.get_level_values('Date') <= last_date_test - horizon]
+    X_test = pd.concat([X_test1, X_test2])
+
+    y_test = y_test_in
+    y_test.index = y_test.index.set_levels(y_test.index.levels[1] - horizon, level=1)
+
+    return X_train, y_train, X_test, y_test
+
+# balanced
+
+df_bal = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
+df_bal['Date'] = pd.to_datetime(df_bal['Date'], format='%Y-%m-%d')
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
 
-X_train, y_train, X_test, y_test = unbalanced_preprocessing(df_unb, covariates, split=0.8)
-model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=10)
-y_hat_unb = ipca_test(X_test=X_test, y_test=y_test, model=model)
-Gamma, Factors = model.get_factors(label_ind=True)
+X_train, y_train, X_test, y_test = balanced_preprocessing(df_bal=df_bal, covariates=covariates, split=0.8)
+# model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=10)
+# y_hat = ipca_test(X_test=X_test, y_test=y_test, model=model)
+# Gamma, Factors = model.get_factors(label_ind=True)
+
+# # unbalanced
+#
+# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+# df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
+#
+# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+# covariates = covariates.drop(columns='Date')
+#
+# X_train, y_train, X_test, y_test = unbalanced_preprocessing(df_unb, covariates, split=0.8)
+# model = ipca_train(X_train=X_train, y_train=y_train, n_factors=3, max_iter=10)
+# y_hat_unb = ipca_test(X_test=X_test, y_test=y_test, model=model)
+# Gamma, Factors = model.get_factors(label_ind=True)
+
+# Forecast
+
+X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test,
+                                                              y_test_in=y_test, horizon=1)
+modelf = ipca_train(X_train=X_trainf, y_train=y_trainf, n_factors=3, max_iter=10)
+y_hatf = ipca_test(X_test=X_testf, y_test=y_testf, model=modelf)
+Gamma, Factors = modelf.get_factors(label_ind=True)
