@@ -25,14 +25,18 @@ def pca_preprocessing(X):
 
 def train_model(n_factors, X_train):
     pca = PCA(n_components=n_factors)
+    # train PCA on normalized X_train
     pca.fit(X_train)
     f_train = pca.transform(X_train)
     return pca, f_train
 
 
 def test_model(sc, model, X_test):
+    # compute factors
     f_test = model.transform(X_test)
+    # return original normalized data
     X_hat_nor = model.inverse_transform(f_test)
+    # return original data
     X_hat = sc.inverse_transform(X_hat_nor)
     return f_test, X_hat
 
@@ -41,8 +45,10 @@ def unbalanced_test_model(df_unb, X_hat, split=0.8):
     # Takes about 2 minutes
     cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
     df_unb = df_unb[df_unb.t > cut_off].reset_index(drop=True)
+    # start t at 0 for convenience
     df_unb['t'] = df_unb.t - (cut_off + 1)
 
+    # set tau and k on the same scale for kernel smoothing
     df_unb['tau_nor'] = (df_unb.daystoex - 10) / 242
     df_unb['k_nor'] = (df_unb.moneyness - 0.9) / 0.4
 
@@ -55,6 +61,7 @@ def unbalanced_test_model(df_unb, X_hat, split=0.8):
     tenors = grid[0].flatten()
     moneyness = grid[1].flatten()
 
+    # perform kernel smoothing
     b = 5 / 100
     y_hat = np.zeros(df_unb.shape[0])
     for _ in tqdm(range(df_unb.shape[0]), desc='option'):
@@ -78,12 +85,14 @@ def forecast_pre_processing(covariates, f_train, f_test, horizon):
     X_train = X_train[:len(y_train), :]
     X_train = np.append(X_train, f_train[:-horizon, :], axis=1)
 
+    # normalize all covariates
     sc_x = StandardScaler()
     X_train = sc_x.fit_transform(X_train)
     X_test = sc_x.transform(X_test)
 
     y_test = f_test # Combination of end of f_train and f_test
 
+    # normalize the factor values
     sc_y = StandardScaler()
     y_train = sc_y.fit_transform(y_train)
     y_test = sc_y.transform(y_test)
@@ -91,6 +100,7 @@ def forecast_pre_processing(covariates, f_train, f_test, horizon):
 
 
 def forecast_train(X_train, y_train, n_epochs=10, batch_size=64):
+    # make and train neural network to forecast factors
     n_factors = y_train.shape[1]
     n_inputs = X_train.shape[1]
 
@@ -108,9 +118,13 @@ def forecast_train(X_train, y_train, n_epochs=10, batch_size=64):
 
 
 def forecast_test(pca, model, X_test, scfy, sc):
+    # covariates -> normalized factors
     y_hat = model.predict(X_test)
+    # normalized factors -> factors
     y_hat = scfy.inverse_transform(y_hat)
+    # factors -> normalized X
     X_hat = pca.inverse_transform(y_hat)
+    # normalized X -> X
     X_hat = sc.inverse_transform(X_hat)
     return X_hat
 
