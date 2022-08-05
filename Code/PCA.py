@@ -78,12 +78,16 @@ def forecast_pre_processing(covariates, f_train, f_test, horizon):
     X_train = X_train[:len(y_train), :]
     X_train = np.append(X_train, f_train[:-horizon, :], axis=1)
 
+    sc_x = StandardScaler()
+    X_train = sc_x.fit_transform(X_train)
+    X_test = sc_x.transform(X_test)
+
     y_test = f_test # Combination of end of f_train and f_test
 
-    sc = StandardScaler()
-    y_train = sc.fit_transform(y_train)
-    y_test = sc.transform(y_test)
-    return X_train, X_test, y_train, y_test, sc
+    sc_y = StandardScaler()
+    y_train = sc_y.fit_transform(y_train)
+    y_test = sc_y.transform(y_test)
+    return X_train, X_test, y_train, y_test, sc_y, sc_x
 
 
 def forecast_train(X_train, y_train, n_epochs=10, batch_size=64):
@@ -103,9 +107,9 @@ def forecast_train(X_train, y_train, n_epochs=10, batch_size=64):
     return model
 
 
-def forecast_test(pca, model, X_test, scf, sc):
+def forecast_test(pca, model, X_test, scfy, sc):
     y_hat = model.predict(X_test)
-    y_hat = scf.inverse_transform(y_hat)
+    y_hat = scfy.inverse_transform(y_hat)
     X_hat = pca.inverse_transform(y_hat)
     X_hat = sc.inverse_transform(X_hat)
     return X_hat
@@ -132,7 +136,7 @@ total_Rsq = 1 - numerator/denominator
 # Forecasting
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
-X_train, X_test, y_train, y_test, scf = forecast_pre_processing(covariates=covariates, f_train=f_train, f_test=f_test,
+X_train, X_test, y_train, y_test, scfy, scfx = forecast_pre_processing(covariates=covariates, f_train=f_train, f_test=f_test,
                                                                 horizon=1)
 fmodel = forecast_train(X_train=X_train, y_train=y_train, n_epochs=100, batch_size=64)
 X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test, scf=scf, sc=sc)
