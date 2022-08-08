@@ -106,7 +106,7 @@ def forecast_train(X_train, y_train, n_epochs=10, batch_size=64):
 
     input = keras.Input(shape=(n_inputs,))
     layer_1 = layers.Dense(round(n_inputs/2), activation='relu')(input)
-    layer_2 = layers.Dense(n_factors, activation='sigmoid')(layer_1)
+    layer_2 = layers.Dense(n_factors, activation='tanh')(layer_1)
     model = keras.Model(inputs=input, outputs=layer_2)
 
     model.compile(optimizer='adam', loss='mean_squared_error')
