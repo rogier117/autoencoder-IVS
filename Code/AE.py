@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pandas.tseries.holiday import USFederalHolidayCalendar
 import pandas_market_calendars as mcal  # CHANGE ALL USFEDERALHOLIDAY THINGS WITH THIS ONE!!
+from sklearn.preprocessing import StandardScaler
 
 from pandas.tseries.offsets import CustomBusinessDay
 import numpy as np
@@ -18,11 +19,17 @@ from keras import layers
 
 def ae_preprocessing(X, df, split=0.8):
     X = np.array(X)
+
+    # y consists of all IV's available
     y = X.flatten()
+
+    # characters are present in the df
     moneyness = np.array(df.moneyness)
     tenor = np.array(df.daystoex)
     char = np.append(moneyness[:, None], tenor[:, None], axis=1)
+
     X = np.repeat(X, X.shape[1], axis=0)
+
     cut_off = df.t.unique()[round(len(df.t.unique()) * split)]
     X_train = X[df.t <= cut_off, :]
     X_test = X[df.t > cut_off, :]
@@ -30,7 +37,20 @@ def ae_preprocessing(X, df, split=0.8):
     char_test = char[df.t > cut_off, :]
     y_train = y[df.t <= cut_off]
     y_test = y[df.t > cut_off]
-    return X_train, X_test, char_train, char_test, y_train, y_test
+
+    sc_x = StandardScaler()
+    X_train= sc_x.fit_transform(X_train)
+    X_test= sc_x.transform(X_test)
+
+    sc_y = StandardScaler()
+    y_train = sc_y.fit_transform(y_train)
+    y_test = sc_y.transform(y_test)
+
+    sc_c = StandardScaler()
+    char_train = sc_c.fit_transform(char_train)
+    char_test = sc_c.transform(char_test)
+
+    return X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c
 
 
 def create_model(n_factors=3, encoder_width=21, decoder_width=21):
@@ -54,15 +74,6 @@ def create_model(n_factors=3, encoder_width=21, decoder_width=21):
     # This model maps an input to its reconstruction
     autoencoder = keras.Model(inputs=[input_1, input_2], outputs=decoded2)
 
-    # This model maps an input to its encoded representation
-    # encoder = keras.Model(input_img, encoded)
-    #
-    # # This is our encoded (32-dimensional) input
-    # encoded_input = keras.Input(shape=(encoding_dim,))
-    # # Retrieve the last layer of the autoencoder model
-    # decoder_layer = autoencoder.layers[-1]
-    # # Create the decoder model
-    # decoder = keras.Model(encoded_input, decoder_layer(encoded_input))
     return autoencoder
 
 
@@ -81,7 +92,7 @@ def test_ae(model, X_test, char_test):
     return y_hat
 
 
-def unbalanced_test_ae(model, df_unb, X, split=0.8):
+def unbalanced_test_ae(model, df_unb, X, sc_x, sc_c, split=0.8):
     cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
     df_unb = df_unb[df_unb.t > cut_off]
 
@@ -98,6 +109,9 @@ def unbalanced_test_ae(model, df_unb, X, split=0.8):
     for _ in range(len(all_t)):
         el = np.where(df_unb.t == all_t[_])[0]
         X_test[el, :] = X[_, :]
+
+    X_test = sc_x.transform(X_test)
+    char_test = sc_c.transform(char_test)
 
     y_hat = model.predict([X_test, char_test])
     return y_hat
@@ -142,8 +156,16 @@ def indirect_forecast_preprocessing(covariates, X_train_in, X_test_in, model, ho
     X_train = X_train[:len(y_train), :]
     X_train = np.append(X_train, f_train[:-horizon, :], axis=1)
 
+    sc_fx = StandardScaler()
+    X_train = sc_fx.fit_transform(X_train)
+    X_test = sc_fx.transform(X_test)
+
+    sc_fy = StandardScaler()
+    y_train = sc_fy.fit_transform(y_train)
+    y_test = sc_fy.transform(y_test)
+
     partial_model = keras.Model(inputs=model.layers[4].input, outputs=model.output)
-    return X_train, X_test, y_train, y_test, partial_model
+    return X_train, X_test, y_train, y_test, partial_model, sc_fx, sc_fy
 
 
 def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
@@ -164,7 +186,7 @@ def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
 
 
 def indirect_forecast_test(trained_model, partial_model, X_test, char_test):
-    gridsize = int(char_test.shape[0]/X_test.shape[0])
+    gridsize = int(char_test.shape[0] / X_test.shape[0])
 
     f_test = trained_model.predict(X_test)
     f_test = np.repeat(f_test, gridsize, axis=0)
@@ -173,13 +195,12 @@ def indirect_forecast_test(trained_model, partial_model, X_test, char_test):
     return y_hat
 
 
-
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
 
 split = 0.8
 
-X_train, X_test, char_train, char_test, y_train, y_test = ae_preprocessing(X=X, df=df, split=split)
+X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
 model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
 
 # Train model
@@ -189,31 +210,31 @@ trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train
 # Test on balanced data
 y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
 
-# # Test on unbalanced data
-# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# y_hat_unb = unbalanced_test_ae(model=trained_model, X=X, df_unb=df_unb, split=split)
+# Test on unbalanced data
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
 
 # Direct forecast
-# X_train, X_test, char_train, char_test, y_train, y_test = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
-#                                                                                         char_train=char_train,
-#                                                                                         char_test=char_test,
-#                                                                                         y_train=y_train, y_test=y_test,
-#                                                                                         horizon=1)
-#
-# model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
-#
-# # Train model
-# trained_model_f = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-#                            y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
-#
-# # Test on balanced data
-# y_hat = test_ae(model=trained_model_f, X_test=X_test, char_test=char_test)
+X_train, X_test, char_train, char_test, y_train, y_test = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
+                                                                                        char_train=char_train,
+                                                                                        char_test=char_test,
+                                                                                        y_train=y_train, y_test=y_test,
+                                                                                        horizon=1)
+
+model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+
+# Train model
+trained_model_f = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+                           y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
+
+# Test on balanced data
+y_hat_f = test_ae(model=trained_model_f, X_test=X_test, char_test=char_test)
 
 # Indirect forecast
 
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
-X_train_f, X_test_f, y_train_f, y_test_f, partial_model = indirect_forecast_preprocessing(
+X_train_f, X_test_f, y_train_f, y_test_f, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
     covariates=covariates,
     X_train_in=X_train,
     X_test_in=X_test,
