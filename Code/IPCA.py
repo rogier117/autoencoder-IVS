@@ -3,21 +3,26 @@ import pandas as pd
 from ipca import InstrumentedPCA
 import matplotlib.pyplot as plt
 import statsmodels.formula.api as sm
+from sklearn.preprocessing import StandardScaler
 
 from tensorflow import keras
 from keras import layers
 
 
 def balanced_preprocessing(df_bal_f, covariates_f, split=0.8):
+    # change date to integer from 0 to T-1
+    df_bal_f = df_bal_f.copy()
     df_bal_f['Date'] = df_bal_f.t.astype(int)
     df_bal_f = df_bal_f.drop(columns=["tau_nor", "k_nor", "t"])
 
+    # ID shows which tau-k pair it is
     gridsize = df_bal_f[df_bal_f.Date == df_bal_f.Date[0]].shape[0]
     ID = np.arange(gridsize)
     ID = np.tile(ID, len(df_bal_f.Date.unique()))
     df_bal_f['ID'] = ID
     df_bal_f.insert(0, 'ID', df_bal_f.pop('ID'))
 
+    # covariates start 21 days before start sample
     covariates_f = covariates_f.iloc[21:]
     for col in covariates_f.columns:
         df_bal_f[col] = covariates_f[col].repeat(gridsize).reset_index(drop=True)
@@ -41,7 +46,22 @@ def balanced_preprocessing(df_bal_f, covariates_f, split=0.8):
     y_test_f = X_test_f['IV']
     X_test_f = X_test_f.drop('IV', axis=1)
 
-    return X_train_f, y_train_f, X_test_f, y_test_f
+    sc_x = StandardScaler()
+
+    X_train_f_val = sc_x.fit_transform(X_train_f.values)
+    X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+
+    X_test_f_val = sc_x.transform(X_test_f.values)
+    X_test_f = pd.DataFrame(X_test_f_val, index=X_test_f.index, columns=X_test_f.columns)
+
+    sc_y = StandardScaler()
+    y_train_f_val = sc_y.fit_transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+    y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+
+    y_test_f_val = sc_y.transform(y_test_f.values.reshape(-1, 1)).reshape(-1, )
+    y_test_f = pd.Series(y_test_f_val, index=y_test_f.index)
+
+    return X_train_f, y_train_f, X_test_f, y_test_f, sc_x, sc_y
 
 
 def ipca_train(X_train_f, y_train_f, n_factors=3, max_iter=200):
@@ -72,7 +92,7 @@ def ipca_test(X_test_f, y_test_f, model, n_factors=3):
 
 # Use unbalanced data for training
 
-def unbalanced_preprocessing(df_unb, covariates_f, split=0.8):
+def unbalanced_preprocessing(df_unb, covariates_f, sc_x, sc_y, split=0.8):
     df_unb['Date'] = df_unb.t.astype(int)
     df_unb = df_unb.drop(columns=["date", "exdate", "cp_flag", "strike_price", "best_bid", "best_offer", "volume", "t",
                                   "price", "moneynessdev", "q"])
@@ -109,10 +129,24 @@ def unbalanced_preprocessing(df_unb, covariates_f, split=0.8):
     y_test_f = X_test_f['IV']
     X_test_f = X_test_f.drop('IV', axis=1)
 
+    # normalize everything according to the same scales as for the balanced case
+    X_train_f_val = sc_x.transform(X_train_f.values)
+    X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+
+    X_test_f_val = sc_x.transform(X_test_f.values)
+    X_test_f = pd.DataFrame(X_test_f_val, index=X_test_f.index, columns=X_test_f.columns)
+
+    y_train_f_val = sc_y.transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+    y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+
+    y_test_f_val = sc_y.transform(y_test_f.values.reshape(-1, 1)).reshape(-1, )
+    y_test_f = pd.Series(y_test_f_val, index=y_test_f.index)
+
     return X_train_f, y_train_f, X_test_f, y_test_f
 
 
-def forecast_preprocessing(X_train_in, y_train_in, X_test_in, y_test_in, covariates_f, horizon=1):
+def forecast_preprocessing(X_train_in, y_train_in, X_test_in, y_test_in, covariates_f, sc_x, sc_y, horizon=1,
+                           balanced=True):
     covariates_f = covariates_f.iloc[21 - horizon:-horizon, :]
     temp2 = covariates_f.values
 
@@ -136,23 +170,32 @@ def forecast_preprocessing(X_train_in, y_train_in, X_test_in, y_test_in, covaria
     y_train_f = y_train_in
     y_test_f = y_test_in
 
-    # last_date = np.max(X_train_in.index.get_level_values('Date'))
-    # last_date_test = np.max(X_test_in.index.get_level_values('Date'))
-    #
-    # X_train = X_train_in[X_train_in.index.get_level_values('Date') <= last_date - horizon]
-    # y_train = y_train_in[y_train_in.index.get_level_values('Date') >= horizon]
-    #
-    # y_train.index = y_train.index.set_levels(y_train.index.levels[1] - horizon, level=1)
-    #
-    # X_test1 = X_train_in[X_train_in.index.get_level_values('Date') > last_date - horizon]
-    # X_test2 = X_test_in[X_test_in.index.get_level_values('Date') <= last_date_test - horizon]
-    # X_test = pd.concat([X_test1, X_test2])
-    # X_test = X_test.sort_index(axis=0)
-    #
-    # y_test = y_test_in
-    # y_test.index = y_test.index.set_levels(y_test.index.levels[1] - horizon, level=1)
+    # if the balanced dataset is given, then the standardscaler should be trained over, if not, use the one trained for balanced
+    if balanced:
+        sc_x = StandardScaler()
 
-    return X_train_f, y_train_f, X_test_f, y_test_f
+        X_train_f_val = sc_x.fit_transform(X_train_f.values)
+        X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+
+        sc_y = StandardScaler()
+        y_train_f_val = sc_y.fit_transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+        y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+
+    else:
+        X_train_f_val = sc_x.transform(X_train_f.values)
+        X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+
+        y_train_f_val = sc_y.transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+        y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+
+    # test should be trained the same independent of balanced/unbalanced
+    X_test_f_val = sc_x.transform(X_test_f.values)
+    X_test_f = pd.DataFrame(X_test_f_val, index=X_test_f.index, columns=X_test_f.columns)
+
+    y_test_f_val = sc_y.transform(y_test_f.values.reshape(-1, 1)).reshape(-1, )
+    y_test_f = pd.Series(y_test_f_val, index=y_test_f.index)
+
+    return X_train_f, y_train_f, X_test_f, y_test_f, sc_x, sc_y
 
 
 def nn_preprocessing(covariates_f, factors_f, factors_test_f, horizon=1):
@@ -195,7 +238,7 @@ def forecast_test(model, X_test_nn_f, X_test_f, gamma):
     factors_hat = model.predict(X_test_nn_f)
     y_hat_nn = np.zeros(X_test_f.shape[0])
     for _ in range(y_hat_nn.shape[0]):
-        y_hat_nn[_] = np.dot(np.matmul(X_test_fv[_, :], gamma), factors_hat[dates[_]-mindate])
+        y_hat_nn[_] = np.dot(np.matmul(X_test_fv[_, :], gamma), factors_hat[dates[_] - mindate])
 
     return y_hat_nn
 
@@ -207,11 +250,12 @@ df_bal['Date'] = pd.to_datetime(df_bal['Date'], format='%Y-%m-%d')
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
 
-X_train, y_train, X_test, y_test = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates, split=0.8)
+X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
+                                                                      split=0.8)
 # model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=3, max_iter=10)
-# y_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
+# y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
 # gamma_bal, factors_bal = model.get_factors(label_ind=True)
-#
+
 # # unbalanced
 #
 # df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
@@ -220,19 +264,20 @@ X_train, y_train, X_test, y_test = balanced_preprocessing(df_bal_f=df_bal, covar
 # covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 # covariates = covariates.drop(columns='Date')
 #
-# X_train, y_train, X_test, y_test = unbalanced_preprocessing(df_unb, covariates, split=0.8)
-# model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=3, max_iter=10)
-# y_hat_unb = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
+# X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
+# model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=3, max_iter=10)
+# y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model)
 # gamma_unb, factors_unb = model.get_factors(label_ind=True)
 
 # Forecast
 
-X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test,
-                                                              y_test_in=y_test, covariates_f=covariates, horizon=1)
+X_trainf, y_trainf, X_testf, y_testf, \
+sc_x_f, sc_y_f = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test, y_test_in=y_test,
+                                        covariates_f=covariates, sc_x=sc_y, sc_y=sc_x, horizon=1, balanced=True)
 modelf = ipca_train(X_train_f=X_trainf, y_train_f=y_trainf, n_factors=3, max_iter=10)
 y_hatf, factors_hatf = ipca_test(X_test_f=X_testf, y_test_f=y_testf, model=modelf)
 gammaf, factorsf = modelf.get_factors(label_ind=True)
 X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
                                                                 factors_test_f=factors_hatf, horizon=1)
 model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
-y_hatf = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
+y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
