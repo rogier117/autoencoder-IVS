@@ -150,10 +150,10 @@ total_Rsq = 1 - numerator/denominator
 # Forecasting
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
-X_train, X_test, y_train, y_test, scfy, scfx = forecast_pre_processing(covariates=covariates, f_train=f_train, f_test=f_test,
-                                                                horizon=1)
-fmodel = forecast_train(X_train=X_train, y_train=y_train, n_epochs=100, batch_size=64)
-X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test, scfy=scfy, sc=sc)
+X_train_f, X_test_f, y_train_f, y_test_f, scfy, scfx = forecast_pre_processing(covariates=covariates, f_train=f_train,
+                                                                               f_test=f_test, horizon=1)
+fmodel = forecast_train(X_train=X_train_f, y_train=y_train_f, n_epochs=100, batch_size=64)
+X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
 
 
 
