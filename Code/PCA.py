@@ -32,14 +32,12 @@ def train_model(n_factors, X_train):
     return pca, f_train
 
 
-def test_model(sc, model, X_test):
+def test_model(model, X_test):
     # compute factors
     f_test = model.transform(X_test)
     # return original normalized data
     X_hat_nor = model.inverse_transform(f_test)
-    # return original data
-    X_hat = sc.inverse_transform(X_hat_nor)
-    return f_test, X_hat
+    return f_test, X_hat_nor
 
 
 def unbalanced_test_model(df_unb, X_hat, split=0.8):
@@ -125,49 +123,37 @@ def forecast_test(pca, model, X_test, scfy, sc):
     y_hat = scfy.inverse_transform(y_hat)
     # factors -> normalized X
     X_hat = pca.inverse_transform(y_hat)
-    # normalized X -> X
-    X_hat = sc.inverse_transform(X_hat)
     return X_hat
 
 
 # importing or loading the dataset
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 
-# Pre-processing
-sc, X_train, X_test = pca_preprocessing(X=X)
-pca, f_train = train_model(n_factors=3, X_train=X_train)
-f_test, X_hat = test_model(sc=sc, model=pca, X_test=X_test)
-
-# Calculate total R^2 as described in paper
-numerator = np.sum((sc.inverse_transform(X_test) - X_hat) ** 2)
-denominator = np.sum((sc.inverse_transform(X_test) - np.mean(sc.inverse_transform(X_test))) ** 2)
-total_Rsq = 1 - numerator/denominator
-
-# Test performance on unbalanced data
-# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
-
-
-# Forecasting
-covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-covariates = covariates.drop(columns='Date')
-X_train_f, X_test_f, y_train_f, y_test_f, scfy, scfx = forecast_pre_processing(covariates=covariates, f_train=f_train,
-                                                                               f_test=f_test, horizon=1)
-fmodel = forecast_train(X_train=X_train_f, y_train=y_train_f, n_epochs=100, batch_size=64)
-X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
-
-
-
-# # Calculate daily total R^2
-# Rsq_array = np.zeros(X_hat_nor.shape[0])
-# for i in range(X_hat_nor.shape[0]):
-#     temp_hat = X_hat_nor[i,:]
-#     temp_test = X_test_nor[i,:]
-#     temp_num = np.sum((temp_test - temp_hat) ** 2)
-#     temp_denom = np.sum(temp_test ** 2)
-#     Rsq_array[i] = 1 - temp_num / temp_denom
+# # Pre-processing
+# sc, X_train, X_test = pca_preprocessing(X=X)
+# pca, f_train = train_model(n_factors=3, X_train=X_train)
+# f_test, X_hat = test_model(model=pca, X_test=X_test)
 #
-# # Plotting with dates: import dataset with dates
-# SPX = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\SPX data date.csv')
-# SPX['Date'] = pd.to_datetime(SPX['Date'], format='%Y-%m-%d')
-# plt.plot(SPX.Date[-len(Rsq_array):],Rsq_array)
+# # Calculate total R^2 as described in paper
+# numerator = np.sum((sc.inverse_transform(X_test) - X_hat) ** 2)
+# denominator = np.sum((sc.inverse_transform(X_test) - np.mean(sc.inverse_transform(X_test))) ** 2)
+# total_Rsq = 1 - numerator/denominator
+#
+# # Test performance on unbalanced data
+# # df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+# # y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+#
+#
+# # Forecasting
+# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+# covariates = covariates.drop(columns='Date')
+# X_train_f, X_test_f, y_train_f, y_test_f, scfy, scfx = forecast_pre_processing(covariates=covariates, f_train=f_train,
+#                                                                                f_test=f_test, horizon=1)
+# fmodel = forecast_train(X_train=X_train_f, y_train=y_train_f, n_epochs=100, batch_size=64)
+# X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
+r2 = np.zeros(6)
+sc, X_train, X_test = pca_preprocessing(X=X)
+for _ in range(6):
+    pca, f_train = train_model(n_factors=_+1, X_train=X_train)
+    f_test, X_hat = test_model(model=pca, X_test=X_test)
+    r2[_] = rsq(y_test=X_test, y_hat=X_hat, sc_y=sc)

@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 
 from tensorflow import keras
 from keras import layers
+from Code.performance_measure import rsq
 
 
 def balanced_preprocessing(df_bal_f, covariates_f, split=0.8):
@@ -70,7 +71,7 @@ def ipca_train(X_train_f, y_train_f, n_factors=3, max_iter=200):
     return model
 
 
-def ipca_test(X_test_f, y_test_f, model, n_factors=3):
+def ipca_test(X_test_f, y_test_f, model, n_factors):
     alldates = np.array([x[1] for x in X_test_f.index])
     dates = np.unique(alldates)
 
@@ -250,8 +251,8 @@ df_bal['Date'] = pd.to_datetime(df_bal['Date'], format='%Y-%m-%d')
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
 
-X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
-                                                                      split=0.8)
+# X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
+#                                                                       split=0.8)
 # model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=3, max_iter=10)
 # y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
 # gamma_bal, factors_bal = model.get_factors(label_ind=True)
@@ -271,13 +272,21 @@ X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=d
 
 # Forecast
 
-X_trainf, y_trainf, X_testf, y_testf, \
-sc_x_f, sc_y_f = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test, y_test_in=y_test,
-                                        covariates_f=covariates, sc_x=sc_y, sc_y=sc_x, horizon=1, balanced=True)
-modelf = ipca_train(X_train_f=X_trainf, y_train_f=y_trainf, n_factors=3, max_iter=10)
-y_hatf, factors_hatf = ipca_test(X_test_f=X_testf, y_test_f=y_testf, model=modelf)
-gammaf, factorsf = modelf.get_factors(label_ind=True)
-X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
-                                                                factors_test_f=factors_hatf, horizon=1)
-model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
-y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
+# X_trainf, y_trainf, X_testf, y_testf, \
+# sc_x_f, sc_y_f = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test, y_test_in=y_test,
+#                                         covariates_f=covariates, sc_x=sc_y, sc_y=sc_x, horizon=1, balanced=True)
+# modelf = ipca_train(X_train_f=X_trainf, y_train_f=y_trainf, n_factors=3, max_iter=10)
+# y_hatf, factors_hatf = ipca_test(X_test_f=X_testf, y_test_f=y_testf, model=modelf)
+# gammaf, factorsf = modelf.get_factors(label_ind=True)
+# X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
+#                                                                 factors_test_f=factors_hatf, horizon=1)
+# model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
+# y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
+
+r2 = np.zeros(6)
+X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
+                                                                      split=0.8)
+for _ in range(6):
+    model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=10)
+    y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
+    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)

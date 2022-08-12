@@ -15,6 +15,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
+from Code.performance_measure import rsq
 
 
 def ae_preprocessing(X, df, split=0.8):
@@ -63,13 +64,17 @@ def create_model(n_factors=3, encoder_width=21, decoder_width=21):
     # "encoded" is the encoded representation of the input
     encoded = layers.Dense(encoder_width, activation='relu')(input_1)
 
-    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded)
+    encoded_temp = layers.Dense(encoder_width/2, activation='relu')(encoded)
+
+    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded_temp)
     # Add inputs to decoder
     merge = layers.Concatenate()([encoded2, input_2])
     # "decoded" is the lossy reconstruction of the input
     decoded = layers.Dense(decoder_width, activation='relu')(merge)
 
-    decoded2 = layers.Dense(1, activation='tanh')(decoded)
+    decoded_temp = layers.Dense(decoder_width/2, activation='relu')(decoded)
+
+    decoded2 = layers.Dense(1, activation='linear')(decoded_temp)
 
     # This model maps an input to its reconstruction
     autoencoder = keras.Model(inputs=[input_1, input_2], outputs=decoded2)
@@ -174,7 +179,7 @@ def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
 
     input = keras.Input(shape=(n_inputs,))
     layer_1 = layers.Dense(round(n_inputs / 2), activation='relu')(input)
-    layer_2 = layers.Dense(n_factors, activation='tanh')(layer_1)
+    layer_2 = layers.Dense(n_factors, activation='linear')(layer_1)
     model = keras.Model(inputs=input, outputs=layer_2)
 
     model.compile(optimizer='adam', loss='mean_squared_error')
@@ -200,12 +205,12 @@ df = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.cs
 
 split = 0.8
 
-X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
-model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
-
-# Train model
-trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-                         y_train=y_train, y_test=y_test, epochs=5, batch_size=42)
+# X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
+# model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+#
+# # Train model
+# trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+#                          y_train=y_train, y_test=y_test, epochs=5, batch_size=42)
 #
 # # Test on balanced data
 # y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
@@ -214,14 +219,14 @@ trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train
 # df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
 # y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
 
-# Direct forecast
-X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
-                                                                                        char_train=char_train,
-                                                                                        char_test=char_test,
-                                                                                        y_train=y_train, y_test=y_test,
-                                                                                        horizon=1)
-
-model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+# # Direct forecast
+# X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
+#                                                                                         char_train=char_train,
+#                                                                                         char_test=char_test,
+#                                                                                         y_train=y_train, y_test=y_test,
+#                                                                                         horizon=1)
+#
+# model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
 
 # # Train model
 # trained_model_f = train_ae(model=model, X_train=X_train_f, X_test=X_test_f, char_train=char_train_f, char_test=char_test_f,
@@ -230,17 +235,27 @@ model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
 # # Test on balanced data
 # y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
 
-# Indirect forecast
+# # Indirect forecast
+#
+# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+# covariates = covariates.drop(columns='Date')
+# X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+#     covariates=covariates,
+#     X_train_in=X_train,
+#     X_test_in=X_test,
+#     model=trained_model,
+#     horizon=1)
+#
+# trained_model_if = indirect_forecast_train(X_train=X_train_if, y_train=y_train_if, n_epochs=50, batch_size=42)
+# y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
+#                                   char_test=char_test)
 
-covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-covariates = covariates.drop(columns='Date')
-X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
-    covariates=covariates,
-    X_train_in=X_train,
-    X_test_in=X_test,
-    model=trained_model,
-    horizon=1)
+r2 = np.zeros(6)
+X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
+for _ in range(6):
+    model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
 
-trained_model_if = indirect_forecast_train(X_train=X_train_if, y_train=y_train_if, n_epochs=50, batch_size=42)
-y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
-                                  char_test=char_test)
+    trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+                             y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
+    y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
+    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
