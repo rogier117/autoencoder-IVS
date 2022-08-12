@@ -9,6 +9,7 @@ from keras import layers
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from Code.performance_measure import rsq
 
 
 def pca_preprocessing(X):
