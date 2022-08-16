@@ -4,6 +4,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 def rsq(y_test, y_hat, sc_y):
+
     if y_test.shape.__len__() == 1 and isinstance(y_test, pd.Series):
         y_test = y_test.values.reshape(-1, 1)
     elif y_test.shape.__len__() == 1:
@@ -11,8 +12,9 @@ def rsq(y_test, y_hat, sc_y):
     if y_hat.shape.__len__() == 1:
         y_hat = y_hat.reshape(-1, 1)
 
-    y_test = sc_y.inverse_transform(y_test)
-    y_hat = sc_y.inverse_transform(y_hat)
+    if sc_y is not None:
+        y_test = sc_y.inverse_transform(y_test)
+        y_hat = sc_y.inverse_transform(y_hat)
 
     y_test = y_test.flatten()
     y_hat = y_hat.flatten()
