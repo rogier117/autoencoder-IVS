@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from Code.performance_measure import rsq
+import pickle
 
 
 def pca_preprocessing(X):
@@ -126,22 +127,14 @@ def forecast_test(pca, model, X_test, scfy, sc):
     return X_hat
 
 
-# importing or loading the dataset
-X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
-
 # # Pre-processing
 # sc, X_train, X_test = pca_preprocessing(X=X)
 # pca, f_train = train_model(n_factors=3, X_train=X_train)
 # f_test, X_hat = test_model(model=pca, X_test=X_test)
 #
-# # Calculate total R^2 as described in paper
-# numerator = np.sum((sc.inverse_transform(X_test) - X_hat) ** 2)
-# denominator = np.sum((sc.inverse_transform(X_test) - np.mean(sc.inverse_transform(X_test))) ** 2)
-# total_Rsq = 1 - numerator/denominator
-#
 # # Test performance on unbalanced data
-# # df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# # y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+# y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
 #
 #
 # # Forecasting
@@ -151,9 +144,25 @@ X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
 #                                                                                f_test=f_test, horizon=1)
 # fmodel = forecast_train(X_train=X_train_f, y_train=y_train_f, n_epochs=100, batch_size=64)
 # X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
+
+# importing or loading the dataset
+X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+split = 0.8
+cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+df_unb_test = df_unb[df_unb.t > cut_off].reset_index(drop=True)
+
 r2 = np.zeros(6)
+r2_u = np.zeros(6)
 sc, X_train, X_test = pca_preprocessing(X=X)
 for _ in range(6):
     pca, f_train = train_model(n_factors=_+1, X_train=X_train)
     f_test, X_hat = test_model(model=pca, X_test=X_test)
     r2[_] = rsq(y_test=X_test, y_hat=X_hat, sc_y=sc)
+
+    X_hat = sc.inverse_transform(X_hat)
+    y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+    r2_u[_] = rsq(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)
+
+    # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_+1) + "f_0h.sav"
+    # pickle.dump(pca, open(tempdir, 'wb'))
