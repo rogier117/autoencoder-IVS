@@ -250,7 +250,12 @@ split = 0.8
 # y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
 #                                   char_test=char_test)
 
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+df_unb_test = df_unb[df_unb.t > cut_off]
+
 r2 = np.zeros(6)
+r2_u = np.zeros(6)
 X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
 for _ in range(6):
     model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
@@ -259,3 +264,10 @@ for _ in range(6):
                              y_train=y_train, y_test=y_test, epochs=10, batch_size=42)
     y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+
+    # Unbalanced testing
+    y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
+    r2_u[_] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_unb, sc_y=sc_y)
+
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+    trained_model.save(tempdir)
