@@ -9,6 +9,8 @@ from tensorflow import keras
 from keras import layers
 from Code.performance_measure import rsq
 
+import pickle
+
 
 def balanced_preprocessing(df_bal_f, covariates_f, split=0.8):
     # change date to integer from 0 to T-1
@@ -244,6 +246,28 @@ def forecast_test(model, X_test_nn_f, X_test_f, gamma):
     return y_hat_nn
 
 
+def bootstrap(bs, X_train):
+    dates = np.array([x[1] for x in X_train.index])
+    maxdate = np.max(dates) + 1
+
+    X_train_out = list()
+    X_test_out = list()
+
+    for _ in range(bs):
+        cut_begin = round((maxdate * _)/bs)
+        cut_end = round((maxdate * (_+1))/bs)
+        sel1 = dates >= cut_begin
+        sel2 = dates < cut_end
+        # Selection of elements for test
+        el = sel1 * sel2
+        X_test_out.append(X_train[el])
+        # Selection of elements for train
+        elc = np.array([not elem for elem in el])
+        X_train_out.append(X_train[elc])
+
+    return X_train_out, X_test_out
+
+
 # balanced
 
 df_bal = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
@@ -257,10 +281,10 @@ covariates = covariates.drop(columns='Date')
 # y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
 # gamma_bal, factors_bal = model.get_factors(label_ind=True)
 
-# # unbalanced
-#
-# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
+# unbalanced
+
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 #
 # covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 # covariates = covariates.drop(columns='Date')
@@ -283,10 +307,48 @@ covariates = covariates.drop(columns='Date')
 # model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
 # y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
 
-r2 = np.zeros(6)
+# r2 = np.zeros(6)
+# r2_unb = np.zeros(6)
 X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
                                                                       split=0.8)
-for _ in range(6):
-    model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=10)
-    y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
-    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
+
+# for _ in range(6):
+#     model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=10)
+#     y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
+#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#
+#     y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
+#     r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+#
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_" + str(_ + 1) + "f_0h"
+#     pickle.dump(model, open(tempdir, 'wb'))
+
+# Variable selection
+
+boundary = 0.9863
+done = False
+removed = list()
+bs = 5
+
+while not done:
+    r2_unb = np.zeros(X_train.shape[1])
+    for _ in range(X_train.shape[1]):
+        X_train_temp = X_train.drop(X_train.columns[_], axis=1)
+        X_test_temp = X_test.drop(X_test.columns[_], axis=1)
+        X_test_unb_temp = X_test_unb.drop(X_test_unb.columns[_], axis=1)
+
+        model = ipca_train(X_train_f=X_train_temp, y_train_f=y_train, n_factors=4, max_iter=15)
+
+        y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb_temp, y_test_f=y_test_unb, model=model, n_factors=4)
+        r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+
+    if np.max(r2_unb) < boundary:
+        done = True
+    else:
+        arg = np.argmax(r2_unb)
+        removed.append(X_train.columns[arg])
+        X_train = X_train.drop(X_train.columns[arg], axis=1)
+        X_test = X_test.drop(X_test.columns[arg], axis=1)
+        X_test_unb = X_test_unb.drop(X_test_unb.columns[arg], axis=1)
+        boundary = np.max(r2_unb)
