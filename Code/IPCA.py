@@ -246,12 +246,15 @@ def forecast_test(model, X_test_nn_f, X_test_f, gamma):
     return y_hat_nn
 
 
-def bootstrap(bs, X_train):
+def bootstrap_data(bs, X_train, y_train):
     dates = np.array([x[1] for x in X_train.index])
     maxdate = np.max(dates) + 1
 
     X_train_out = list()
     X_test_out = list()
+
+    y_train_out = list()
+    y_test_out = list()
 
     for _ in range(bs):
         cut_begin = round((maxdate * _)/bs)
@@ -261,11 +264,55 @@ def bootstrap(bs, X_train):
         # Selection of elements for test
         el = sel1 * sel2
         X_test_out.append(X_train[el])
+        y_test_out.append(y_train[el])
         # Selection of elements for train
         elc = np.array([not elem for elem in el])
         X_train_out.append(X_train[elc])
+        y_train_out.append(y_train[elc])
 
-    return X_train_out, X_test_out
+    return X_train_out, X_test_out, y_train_out, y_test_out
+
+
+def bootstrap(X_train, bs, y_train):
+    done = False
+    removed = list()
+
+    X_train_f = X_train.copy()
+    y_train_f = y_train.copy()
+
+    X_train_temp, X_test_temp, y_train_temp, y_test_temp = bootstrap_data(bs=bs, X_train=X_train_f, y_train=y_train_f)
+    r2_temp = np.zeros(bs)
+
+    for i in range(bs):
+        model = ipca_train(X_train_f=X_train_temp[i], y_train_f=y_train_temp[i], n_factors=3, max_iter=50)
+        y_hat, f_hat = ipca_test(X_test_f=X_test_temp[i], y_test_f=y_test_temp[i], model=model, n_factors=3)
+        r2_temp[i] = rsq(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
+
+    boundary = np.mean(r2_temp)
+
+    while not done:
+        r2_unb = np.zeros(X_train_f.shape[1])
+        for _ in range(X_train_f.shape[1]):
+            X_train_col = X_train_f.drop(X_train_f.columns[_], axis=1)
+            X_train_temp, X_test_temp, y_train_temp, y_test_temp = bootstrap_data(bs=bs, X_train=X_train_col,
+                                                                                  y_train=y_train)
+            r2_temp = np.zeros(bs)
+
+            for i in range(bs):
+                model = ipca_train(X_train_f=X_train_temp[i], y_train_f=y_train_temp[i], n_factors=3, max_iter=50)
+                y_hat, f_hat = ipca_test(X_test_f=X_test_temp[i], y_test_f=y_test_temp[i], model=model, n_factors=3)
+                r2_temp[i] = rsq(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
+
+            r2_unb[_] = np.mean(r2_temp)
+
+        if np.max(r2_unb) < boundary:
+            done = True
+        else:
+            arg = np.argmax(r2_unb)
+            removed.append(X_train_f.columns[arg])
+            X_train_f = X_train_f.drop(X_train.columns[arg], axis=1)
+            boundary = np.max(r2_unb)
+    return removed
 
 
 # balanced
@@ -326,29 +373,4 @@ X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_u
 
 # Variable selection
 
-boundary = 0.9863
-done = False
-removed = list()
-bs = 5
-
-while not done:
-    r2_unb = np.zeros(X_train.shape[1])
-    for _ in range(X_train.shape[1]):
-        X_train_temp = X_train.drop(X_train.columns[_], axis=1)
-        X_test_temp = X_test.drop(X_test.columns[_], axis=1)
-        X_test_unb_temp = X_test_unb.drop(X_test_unb.columns[_], axis=1)
-
-        model = ipca_train(X_train_f=X_train_temp, y_train_f=y_train, n_factors=4, max_iter=15)
-
-        y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb_temp, y_test_f=y_test_unb, model=model, n_factors=4)
-        r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
-
-    if np.max(r2_unb) < boundary:
-        done = True
-    else:
-        arg = np.argmax(r2_unb)
-        removed.append(X_train.columns[arg])
-        X_train = X_train.drop(X_train.columns[arg], axis=1)
-        X_test = X_test.drop(X_test.columns[arg], axis=1)
-        X_test_unb = X_test_unb.drop(X_test_unb.columns[arg], axis=1)
-        boundary = np.max(r2_unb)
+rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5)
