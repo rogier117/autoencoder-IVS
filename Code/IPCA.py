@@ -273,7 +273,7 @@ def bootstrap_data(bs, X_train, y_train):
     return X_train_out, X_test_out, y_train_out, y_test_out
 
 
-def bootstrap(X_train, bs, y_train):
+def bootstrap(X_train, bs, y_train, sc_y):
     done = False
     removed = list()
 
@@ -373,4 +373,4 @@ X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_u
 
 # Variable selection
 
-rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5)
+rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5, sc_y=sc_y)
