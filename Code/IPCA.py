@@ -319,24 +319,31 @@ def bootstrap(X_train, bs, y_train, sc_y):
 
 df_bal = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data balanced.csv')
 df_bal['Date'] = pd.to_datetime(df_bal['Date'], format='%Y-%m-%d')
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
 
-# X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
-#                                                                       split=0.8)
+X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
+                                                                      split=0.8)
+X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
+
+# Variable selection
+
+# rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5, sc_y=sc_y)
+rem_var = ['SPXM', 'FFER', 'US10YMY', 'GDPBBK']
+
+X_train = X_train.drop(columns=rem_var)
+X_test = X_test.drop(columns=rem_var)
+X_train_unb = X_train_unb.drop(columns=rem_var)
+X_test_unb = X_test_unb.drop(columns=rem_var)
+
 # model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=3, max_iter=10)
 # y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
 # gamma_bal, factors_bal = model.get_factors(label_ind=True)
 
 # unbalanced
-
-df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 #
-# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-# covariates = covariates.drop(columns='Date')
-#
-# X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
 # model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=3, max_iter=10)
 # y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model)
 # gamma_unb, factors_unb = model.get_factors(label_ind=True)
@@ -345,7 +352,7 @@ df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 
 # X_trainf, y_trainf, X_testf, y_testf, \
 # sc_x_f, sc_y_f = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test, y_test_in=y_test,
-#                                         covariates_f=covariates, sc_x=sc_y, sc_y=sc_x, horizon=1, balanced=True)
+#                                         covariates_f=covariates, sc_x=sc_x, sc_y=sc_y, horizon=1, balanced=True)
 # modelf = ipca_train(X_train_f=X_trainf, y_train_f=y_trainf, n_factors=3, max_iter=10)
 # y_hatf, factors_hatf = ipca_test(X_test_f=X_testf, y_test_f=y_testf, model=modelf)
 # gammaf, factorsf = modelf.get_factors(label_ind=True)
@@ -354,23 +361,19 @@ df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 # model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
 # y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
 
-# r2 = np.zeros(6)
-# r2_unb = np.zeros(6)
-X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
-                                                                      split=0.8)
-X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
 
-# for _ in range(6):
-#     model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=10)
-#     y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
-#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
-#
-#     y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
-#     r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
-#
-#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_" + str(_ + 1) + "f_0h"
-#     pickle.dump(model, open(tempdir, 'wb'))
+# Train models for 1 to 6 factors
 
-# Variable selection
+r2 = np.zeros(6)
+r2_unb = np.zeros(6)
 
-rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5, sc_y=sc_y)
+for _ in range(6):
+    model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=50)
+    y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
+    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+
+    y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
+    r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_" + str(_ + 1) + "f_0h"
+    pickle.dump(model, open(tempdir, 'wb'))
