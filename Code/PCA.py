@@ -12,6 +12,8 @@ from sklearn.decomposition import PCA
 from Code.performance_measure import rsq
 import pickle
 
+from statsmodels.tsa.stattools import adfuller
+
 
 def pca_preprocessing(X):
     # distributing the dataset into two components X and Y
@@ -155,14 +157,31 @@ df_unb_test = df_unb[df_unb.t > cut_off].reset_index(drop=True)
 r2 = np.zeros(6)
 r2_u = np.zeros(6)
 sc, X_train, X_test = pca_preprocessing(X=X)
+# for _ in range(6):
+#     pca, f_train = train_model(n_factors=_+1, X_train=X_train)
+#     f_test, X_hat = test_model(model=pca, X_test=X_test)
+#     r2[_] = rsq(y_test=X_test, y_hat=X_hat, sc_y=sc)
+#
+#     X_hat = sc.inverse_transform(X_hat)
+#     y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+#     r2_u[_] = rsq(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)
+#
+#     # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_+1) + "f_0h.sav"
+#     # pickle.dump(pca, open(tempdir, 'wb'))
+
+
+# Load models and get factors of 3 factor model
+pca = list()
 for _ in range(6):
-    pca, f_train = train_model(n_factors=_+1, X_train=X_train)
-    f_test, X_hat = test_model(model=pca, X_test=X_test)
-    r2[_] = rsq(y_test=X_test, y_hat=X_hat, sc_y=sc)
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_+1) + "f_0h.sav"
+    pca.append(pickle.load(open(tempdir, "rb")))
 
-    X_hat = sc.inverse_transform(X_hat)
-    y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
-    r2_u[_] = rsq(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)
+f = np.zeros((X.shape[0], 3))
+f[:X_train.shape[0], :] = pca[2].transform(X_train)
+f[X_train.shape[0]:, :] = pca[2].transform(X_test)
+sc_f = StandardScaler()
+f = sc_f.fit_transform(f)
 
-    # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_+1) + "f_0h.sav"
-    # pickle.dump(pca, open(tempdir, 'wb'))
+level = np.mean(X.values, axis=1).reshape(-1, 1)
+sc_l = StandardScaler()
+level = sc_l.fit_transform(level)

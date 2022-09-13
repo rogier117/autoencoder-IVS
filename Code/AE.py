@@ -17,6 +17,8 @@ from tensorflow import keras
 from keras import layers
 from Code.performance_measure import rsq
 
+from statsmodels.tsa.stattools import adfuller
+
 
 def ae_preprocessing(X, df, split):
     X = np.array(X)
@@ -66,17 +68,17 @@ def create_model(n_factors, encoder_width, decoder_width):
     # "encoded" is the encoded representation of the input
     encoded = layers.Dense(encoder_width, activation='relu')(input_1)
 
-    encoded_temp = layers.Dense(encoder_width, activation='relu')(encoded)
+    # encoded_temp = layers.Dense(encoder_width, activation='relu')(encoded)
 
-    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded_temp)
+    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded)
     # Add inputs to decoder
     merge = layers.Concatenate()([encoded2, input_2])
     # "decoded" is the lossy reconstruction of the input
     decoded = layers.Dense(decoder_width, activation='relu')(merge)
 
-    decoded_temp = layers.Dense(decoder_width, activation='relu')(decoded)
+    # decoded_temp = layers.Dense(decoder_width, activation='relu')(decoded)
 
-    decoded2 = layers.Dense(1, activation='linear')(decoded_temp)
+    decoded2 = layers.Dense(1, activation='linear')(decoded)
 
     # This model maps an input to its reconstruction
     autoencoder = keras.Model(inputs=[input_1, input_2], outputs=decoded2)
@@ -268,28 +270,53 @@ split = 0.8
 
 X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
 
-epochs = np.array([100, 250])
-batch = np.array([42, 84])
-width = np.array([32, 64, 128])
-grid = np.array(np.meshgrid(epochs, batch, width)).T.reshape(-1,3)
-r2 = np.zeros(grid.shape[0])
 
-for _ in range(grid.shape[0]):
-    r2[_] = bootstrap(X_train=X_train, char_train=char_train, y_train=y_train, bs=5, sc_y=sc_y, epochs=grid[_, 0], batch_size=grid[_, 1], width=grid[_, 2])
-
-# X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
-# model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
+# # Bootstrapping
+# epochs = np.array([100, 250])
+# batch = np.array([42, 84])
+# width = np.array([32, 64, 128])
+# grid = np.array(np.meshgrid(epochs, batch, width)).T.reshape(-1,3)
+# r2 = np.zeros(grid.shape[0])
 #
-# # Train model
-# trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-#                          y_train=y_train, y_test=y_test, epochs=5, batch_size=42)
-#
-# # Test on balanced data
-# y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
+# for _ in range(grid.shape[0]):
+#     r2[_] = bootstrap(X_train=X_train, char_train=char_train, y_train=y_train, bs=5, sc_y=sc_y, epochs=grid[_, 0], batch_size=grid[_, 1], width=grid[_, 2])
+# # Optimal parameters: activation=ReLU, epochs=100, batch=84, width=64
 
-# # Test on unbalanced data
+# # Train and test model
 # df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
+# cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+# df_unb_test = df_unb[df_unb.t > cut_off]
+#
+# r2 = np.zeros(6)
+# r2_u = np.zeros(6)
+# for _ in range(6):
+#     model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
+#
+#     trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+#                              y_train=y_train, y_test=y_test, epochs=100, batch_size=84)
+#     y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
+#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#
+#     # Unbalanced testing
+#     y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
+#     r2_u[_] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_unb, sc_y=sc_y)
+#
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
+#     trained_model.save(tempdir)
+
+# Factor interpretation 3-factor model
+tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_3f_0h"
+trained_model = keras.models.load_model(tempdir)
+
+factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[2].output)
+gridsize = X_train.shape[1]
+X_train_factor = X_train[0::gridsize, :]
+X_test_factor = X_test[0::gridsize, :]
+X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
+factors = np.array(factor_model(X_factor))
+adfuller(factors[:, 0])
+adfuller(factors[:, 1])
+adfuller(factors[:, 2])
 
 # # Direct forecast
 # X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
@@ -321,25 +348,3 @@ for _ in range(grid.shape[0]):
 # trained_model_if = indirect_forecast_train(X_train=X_train_if, y_train=y_train_if, n_epochs=50, batch_size=42)
 # y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
 #                                   char_test=char_test)
-
-# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
-# df_unb_test = df_unb[df_unb.t > cut_off]
-#
-# r2 = np.zeros(6)
-# r2_u = np.zeros(6)
-# X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_preprocessing(X=X, df=df, split=split)
-# for _ in range(6):
-#     model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
-#
-#     trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-#                              y_train=y_train, y_test=y_test, epochs=5, batch_size=42)
-#     y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
-#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
-#
-#     # Unbalanced testing
-#     y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
-#     r2_u[_] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_unb, sc_y=sc_y)
-#
-#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
-#     trained_model.save(tempdir)

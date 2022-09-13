@@ -10,6 +10,7 @@ from keras import layers
 from Code.performance_measure import rsq
 
 import pickle
+from statsmodels.tsa.stattools import adfuller
 
 
 def balanced_preprocessing(df_bal_f, covariates_f, split=0.8):
@@ -338,14 +339,46 @@ X_test = X_test.drop(columns=rem_var)
 X_train_unb = X_train_unb.drop(columns=rem_var)
 X_test_unb = X_test_unb.drop(columns=rem_var)
 
-# model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=3, max_iter=10)
-# y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model)
-# gamma_bal, factors_bal = model.get_factors(label_ind=True)
+# Train models for 1 to 6 factors
+#
+# r2 = np.zeros(6)
+# r2_unb = np.zeros(6)
+#
+# for _ in range(6):
+#     model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=500)
+#     y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
+#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#
+#     y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
+#     r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+#
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_" + str(_ + 1) + "f_0h"
+#     pickle.dump(model, open(tempdir, 'wb'))
+
+
+# Factor interpretation 3-factor model
+tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_2f_0h"
+trained_model = pickle.load(open(tempdir, "rb"))
+factors_bal_train = np.array(trained_model.get_factors(label_ind=True)[1]).transpose()
+factors_bal_test = ipca_test(X_test_f=X_test, y_test_f=y_test, model=trained_model, n_factors=2)[1]
+factors = np.concatenate((factors_bal_train, factors_bal_test), axis=0)
+# adfuller(factors[:, 0])
+# adfuller(factors[:, 1])
+# adfuller(factors[:, 2])
+
+# Also use factor loadings!!
+gridsize = 42
+gamma = np.array(trained_model.get_factors(label_ind=True)[0])
+X_train_g = X_train.values
+X_test_g = X_test.values
+loading_train = np.matmul(X_train_g,gamma)[0::gridsize, :]
+loading_test = np.matmul(X_test_g, gamma)[0::gridsize, :]
+loadings = np.concatenate((loading_train, loading_test), axis=0)
+
 
 # unbalanced
 #
 # model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=3, max_iter=10)
-# y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model)
 # gamma_unb, factors_unb = model.get_factors(label_ind=True)
 
 # Forecast
@@ -361,19 +394,3 @@ X_test_unb = X_test_unb.drop(columns=rem_var)
 # model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
 # y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
 
-
-# Train models for 1 to 6 factors
-
-r2 = np.zeros(6)
-r2_unb = np.zeros(6)
-
-for _ in range(6):
-    model = ipca_train(X_train_f=X_train, y_train_f=y_train, n_factors=_+1, max_iter=50)
-    y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
-    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
-
-    y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
-    r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
-
-    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_" + str(_ + 1) + "f_0h"
-    pickle.dump(model, open(tempdir, 'wb'))
