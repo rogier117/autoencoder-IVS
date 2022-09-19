@@ -304,19 +304,33 @@ X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_p
 #     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
 #     trained_model.save(tempdir)
 
-# Factor interpretation 3-factor model
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_3f_0h"
+# # Factor interpretation AE1 3-factor model
+# tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_3f_0h"
+# trained_model = keras.models.load_model(tempdir)
+#
+# factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[2].output)
+# gridsize = X_train.shape[1]
+# X_train_factor = X_train[0::gridsize, :]
+# X_test_factor = X_test[0::gridsize, :]
+# X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
+# factors = np.array(factor_model(X_factor))
+# adfuller(factors[:, 0])
+# adfuller(factors[:, 1])
+# adfuller(factors[:, 2])
+
+# Factor interpretation AE2 3-factor model
+tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_3f_0h"
 trained_model = keras.models.load_model(tempdir)
 
-factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[2].output)
+factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[3].output)
 gridsize = X_train.shape[1]
 X_train_factor = X_train[0::gridsize, :]
 X_test_factor = X_test[0::gridsize, :]
 X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
 factors = np.array(factor_model(X_factor))
-adfuller(factors[:, 0])
-adfuller(factors[:, 1])
-adfuller(factors[:, 2])
+# adfuller(factors[:, 0])
+# adfuller(factors[:, 1])
+# adfuller(factors[:, 2])
 
 # # Direct forecast
 # X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
