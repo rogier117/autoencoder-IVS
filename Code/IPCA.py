@@ -7,7 +7,8 @@ from sklearn.preprocessing import StandardScaler
 
 from tensorflow import keras
 from keras import layers
-from Code.performance_measure import rsq
+from Code.performance_measure import rsq, rsq_recession
+import tensorflow as tf
 
 import pickle
 from statsmodels.tsa.stattools import adfuller
@@ -175,31 +176,34 @@ def forecast_preprocessing(X_train_in, y_train_in, X_test_in, y_test_in, covaria
     y_test_f = y_test_in
 
     # if the balanced dataset is given, then the standardscaler should be trained over, if not, use the one trained for balanced
-    if balanced:
-        sc_x = StandardScaler()
-
-        X_train_f_val = sc_x.fit_transform(X_train_f.values)
-        X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
-
-        sc_y = StandardScaler()
-        y_train_f_val = sc_y.fit_transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
-        y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
-
-    else:
-        X_train_f_val = sc_x.transform(X_train_f.values)
-        X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
-
-        y_train_f_val = sc_y.transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
-        y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+    # Standardscalers are already used for the 'regular' preprocessing (I think)
+    # if balanced:
+    #     sc_x = StandardScaler()
+    #
+    #     X_train_f_val = sc_x.fit_transform(X_train_f.values)
+    #     X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+    # #
+    # #     sc_y = StandardScaler()
+    # #     y_train_f_val = sc_y.fit_transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+    # #     y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
+    # #
+    # else:
+    #     X_train_f_val = sc_x.transform(X_train_f.values)
+    #     X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
+    #
+    #     y_train_f_val = sc_y.transform(y_train_f.values.reshape(-1, 1)).reshape(-1, )
+    #     y_train_f = pd.Series(y_train_f_val, index=y_train_f.index)
 
     # test should be trained the same independent of balanced/unbalanced
+    X_train_f_val = sc_x.transform(X_train_f.values)
+    X_train_f = pd.DataFrame(X_train_f_val, index=X_train_f.index, columns=X_train_f.columns)
     X_test_f_val = sc_x.transform(X_test_f.values)
     X_test_f = pd.DataFrame(X_test_f_val, index=X_test_f.index, columns=X_test_f.columns)
+    #
+    # y_test_f_val = sc_y.transform(y_test_f.values.reshape(-1, 1)).reshape(-1, )
+    # y_test_f = pd.Series(y_test_f_val, index=y_test_f.index)
 
-    y_test_f_val = sc_y.transform(y_test_f.values.reshape(-1, 1)).reshape(-1, )
-    y_test_f = pd.Series(y_test_f_val, index=y_test_f.index)
-
-    return X_train_f, y_train_f, X_test_f, y_test_f, sc_x, sc_y
+    return X_train_f, y_train_f, X_test_f, y_test_f
 
 
 def nn_preprocessing(covariates_f, factors_f, factors_test_f, horizon=1):
@@ -216,13 +220,17 @@ def nn_preprocessing(covariates_f, factors_f, factors_test_f, horizon=1):
     return X_train_f, y_train_f, X_test_f, y_test_f
 
 
-def forecast_train(X_f, y_f, n_epochs=50, batch_size=64):
+def forecast_train(X_f, y_f, n_epochs=100, batch_size=64, width=64):
+    # Set seed
+    tf.random.set_seed(1234)
+
     n_factors = y_f.shape[1]
     n_inputs = X_f.shape[1]
 
     input = keras.Input(shape=(n_inputs,))
-    layer_1 = layers.Dense(round(n_inputs / 2), activation='relu')(input)
-    layer_2 = layers.Dense(n_factors, activation='tanh')(layer_1)
+    layer_1 = layers.Dense(width, activation='relu')(input)
+    layer_15 = layers.Dense(width, activation='relu')(layer_1)
+    layer_2 = layers.Dense(n_factors, activation='linear')(layer_15)
     model = keras.Model(inputs=input, outputs=layer_2)
 
     model.compile(optimizer='adam', loss='mean_squared_error')
@@ -233,15 +241,18 @@ def forecast_train(X_f, y_f, n_epochs=50, batch_size=64):
     return model
 
 
-def forecast_test(model, X_test_nn_f, X_test_f, gamma):
+def forecast_test(model, X_test_nn_f, X_test_f, gamma, ar=False, factors=None):
     X_test_fv = X_test_f.values
     dates = np.array(X_test_f.index.get_level_values('Date'))
     mindate = np.min(dates)
     gamma = gamma.values
-
     factors_hat = model.predict(X_test_nn_f)
+    if ar:
+        factors_hat = X_test_nn_f[:, -factors:]
+
     y_hat_nn = np.zeros(X_test_f.shape[0])
     for _ in range(y_hat_nn.shape[0]):
+        # (c * gamma) * f
         y_hat_nn[_] = np.dot(np.matmul(X_test_fv[_, :], gamma), factors_hat[dates[_] - mindate])
 
     return y_hat_nn
@@ -325,84 +336,175 @@ df_unb['date'] = pd.to_datetime(df_unb['date'], format='%Y-%m-%d')
 covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
 covariates = covariates.drop(columns='Date')
 
+# Variable selection
+# rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5, sc_y=sc_y)
+rem_var = ['SPXM', 'FFER', 'US10YMY', 'GDPBBK']
+covariates = covariates.drop(columns=rem_var)
+
 X_train, y_train, X_test, y_test, sc_x, sc_y = balanced_preprocessing(df_bal_f=df_bal, covariates_f=covariates,
                                                                       split=0.8)
 X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_unb, covariates, sc_x=sc_x, sc_y=sc_y, split=0.8)
 
-# Variable selection
-
-# rem_var = bootstrap(X_train=X_train, y_train=y_train, bs=5, sc_y=sc_y)
-rem_var = ['SPXM', 'FFER', 'US10YMY', 'GDPBBK']
-
-X_train = X_train.drop(columns=rem_var)
-X_test = X_test.drop(columns=rem_var)
-X_train_unb = X_train_unb.drop(columns=rem_var)
-X_test_unb = X_test_unb.drop(columns=rem_var)
-
-# Train models for 1 to 6 factors
-
-r2 = np.zeros(6)
-r2_unb = np.zeros(6)
-
-for _ in range(6):
-    model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=_+1, max_iter=300)
-    y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
-    r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
-
-    y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
-    r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
-
-    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAu_" + str(_ + 1) + "f_0h"
-    pickle.dump(model, open(tempdir, 'wb'))
 
 
-# # Factor interpretation 3-factor model
-# tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_3f_0h"
+# X_train = X_train.drop(columns=rem_var)
+# X_test = X_test.drop(columns=rem_var)
+# X_train_unb = X_train_unb.drop(columns=rem_var)
+# X_test_unb = X_test_unb.drop(columns=rem_var)
+
+
+# # Train models for 1 to 6 factors
+#
+# r2 = np.zeros(6)
+# r2_unb = np.zeros(6)
+#
+# for _ in range(6):
+#     model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=_+1, max_iter=300)
+#     y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
+#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#
+#     y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
+#     r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+#
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAu_" + str(_ + 1) + "f_0h"
+#     pickle.dump(model, open(tempdir, 'wb'))
+#
+#
+# # Factor interpretation 1-factor model
+# tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAb_1f_0h"
 # trained_model = pickle.load(open(tempdir, "rb"))
 # factors_bal_train = np.array(trained_model.get_factors(label_ind=True)[1]).transpose()
-# y_hat, factors_bal_test = ipca_test(X_test_f=X_test, y_test_f=y_test, model=trained_model, n_factors=3)
+# # factors_bal_train = ipca_test(X_test_f=X_train, y_test_f=y_train, model=trained_model, n_factors=3)[1]
+# factors_bal_test = ipca_test(X_test_f=X_test, y_test_f=y_test, model=trained_model, n_factors=1)[1]
 # factors = np.concatenate((factors_bal_train, factors_bal_test), axis=0)
-# adfuller(factors[:, 0])
-# adfuller(factors[:, 1])
-# adfuller(factors[:, 2])
-
-# # Also use factor loadings!!
-# gridsize = 42
-# gamma = np.array(trained_model.get_factors(label_ind=True)[0])
-# X_train_g = X_train.values
-# X_test_g = X_test.values
-# loading_train = np.matmul(X_train_g, gamma)
-# loading_test = np.matmul(X_test_g, gamma)
-#
-# loading_train_final = np.zeros((int(loading_train.shape[0]/42), 3))
-# loading_test_final = np.zeros((int(loading_test.shape[0]/42), 3))
-#
-# for _ in range(loading_train_final.shape[0]):
-#     loading_temp = loading_train[_::loading_train_final.shape[0], :]
-#     loading_train_final[_] = np.mean(loading_temp, axis=0)
-#
-# for _ in range(loading_test_final.shape[0]):
-#     loading_temp = loading_test[_::loading_test_final.shape[0], :]
-#     loading_test_final[_] = np.mean(loading_temp, axis=0)
-#
-# loading_final = np.concatenate((loading_train_final, loading_test_final), axis=0)
 
 
-# unbalanced
-#
-# model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=3, max_iter=10)
-# gamma_unb, factors_unb = model.get_factors(label_ind=True)
 
 # Forecast
+r2 = np.zeros((3, 6))
+r2_u = np.zeros((3, 6))
 
-# X_trainf, y_trainf, X_testf, y_testf, \
-# sc_x_f, sc_y_f = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train, X_test_in=X_test, y_test_in=y_test,
-#                                         covariates_f=covariates, sc_x=sc_x, sc_y=sc_y, horizon=1, balanced=True)
-# modelf = ipca_train(X_train_f=X_trainf, y_train_f=y_trainf, n_factors=3, max_iter=10)
-# y_hatf, factors_hatf = ipca_test(X_test_f=X_testf, y_test_f=y_testf, model=modelf)
-# gammaf, factorsf = modelf.get_factors(label_ind=True)
-# X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
-#                                                                 factors_test_f=factors_hatf, horizon=1)
-# model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=50, batch_size=64)
-# y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
+r2_rec = np.zeros((3, 6))
+r2_ar = np.zeros((3, 6))
 
+horizon = np.array([1, 5, 21])
+
+# for _ in range(6):
+#     for h in range(3):
+#         X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train,
+#                                                                       X_test_in=X_test, y_test_in=y_test,
+#                                                                       covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+#                                                                       horizon=horizon[h], balanced=True)
+#
+#         X_trainf_unb, y_trainf_unb, X_testf_unb, y_testf_unb = forecast_preprocessing(X_train_in=X_train_unb, y_train_in=y_train_unb,
+#                                                                                       X_test_in=X_test_unb, y_test_in=y_test_unb,
+#                                                                                       covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+#                                                                                       horizon=horizon[h], balanced=False)
+#
+#         modelf = ipca_train(X_train_f=X_trainf_unb, y_train_f=y_trainf_unb, n_factors=_+1, max_iter=75)
+#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=modelf, n_factors=_+1)
+#         gammaf, factorsf = modelf.get_factors(label_ind=True)
+#         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
+#                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
+#         model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=100, batch_size=84, width=64)
+#         y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf)
+#         r2[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff, sc_y=sc_y)
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
+#         pickle.dump(modelf, open(tempdir, 'wb'))
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h0"
+#         model_nn.save(tempdir)
+
+
+# for h in range(3):
+#     X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train,
+#                                                                   X_test_in=X_test, y_test_in=y_test,
+#                                                                   covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+#                                                                   horizon=horizon[h], balanced=True)
+#
+#     X_trainf_unb, y_trainf_unb, X_testf_unb, y_testf_unb = forecast_preprocessing(X_train_in=X_train_unb,
+#                                                                                   y_train_in=y_train_unb,
+#                                                                                   X_test_in=X_test_unb,
+#                                                                                   y_test_in=y_test_unb,
+#                                                                                   covariates_f=covariates, sc_x=sc_x,
+#                                                                                   sc_y=sc_y,
+#                                                                                   horizon=horizon[h], balanced=False)
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
+#         trained_model = pickle.load(open(tempdir, "rb"))
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h0"
+#         trained_model_nn = keras.models.load_model(tempdir)
+#
+#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1)
+#         gammaf, factorsf = trained_model.get_factors(label_ind=True)
+#         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
+#                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
+#         y_hatff = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
+#         r2[h, _] = rsq(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
+#
+#         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf)
+#         r2_u[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
+
+
+# Forecast test without recession
+# for h in range(3):
+#     X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train,
+#                                                                   X_test_in=X_test, y_test_in=y_test,
+#                                                                   covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+#                                                                   horizon=horizon[h], balanced=True)
+#
+#     X_trainf_unb, y_trainf_unb, X_testf_unb, y_testf_unb = forecast_preprocessing(X_train_in=X_train_unb,
+#                                                                                   y_train_in=y_train_unb,
+#                                                                                   X_test_in=X_test_unb,
+#                                                                                   y_test_in=y_test_unb,
+#                                                                                   covariates_f=covariates, sc_x=sc_x,
+#                                                                                   sc_y=sc_y,
+#                                                                                   horizon=horizon[h], balanced=False)
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAb_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
+#         trained_model = pickle.load(open(tempdir, "rb"))
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAb_" + str(_ + 1) + "f_" + str(horizon[h]) + "h0"
+#         trained_model_nn = keras.models.load_model(tempdir)
+#
+#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1)
+#         gammaf, factorsf = trained_model.get_factors(label_ind=True)
+#         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
+#                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
+#         X_test_nn = X_test_nn[:522, :]
+#         alldates = np.array([x[1] for x in X_testf_unb.index]) - 4030
+#         X_testf_unb1 = X_testf_unb[alldates < 522]
+#         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb1, gamma=gammaf)
+#         r2_rec[h, _] = rsq(y_test=y_testf_unb.iloc[:y_hatff_unb.shape[0]], y_hat=y_hatff_unb, sc_y=sc_y)
+
+
+
+# # Forecast test with ar term
+# for h in range(3):
+#     X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train,
+#                                                                   X_test_in=X_test, y_test_in=y_test,
+#                                                                   covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+#                                                                   horizon=horizon[h], balanced=True)
+#
+#     X_trainf_unb, y_trainf_unb, X_testf_unb, y_testf_unb = forecast_preprocessing(X_train_in=X_train_unb,
+#                                                                                   y_train_in=y_train_unb,
+#                                                                                   X_test_in=X_test_unb,
+#                                                                                   y_test_in=y_test_unb,
+#                                                                                   covariates_f=covariates, sc_x=sc_x,
+#                                                                                   sc_y=sc_y,
+#                                                                                   horizon=horizon[h], balanced=False)
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAb_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
+#         trained_model = pickle.load(open(tempdir, "rb"))
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAb_" + str(_ + 1) + "f_" + str(horizon[h]) + "h0"
+#         trained_model_nn = keras.models.load_model(tempdir)
+#
+#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1)
+#         gammaf, factorsf = trained_model.get_factors(label_ind=True)
+#         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
+#                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
+#         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf, ar=True, factors=_+1)
+#         r2_ar[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)

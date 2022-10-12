@@ -15,7 +15,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
-from Code.performance_measure import rsq
+from Code.performance_measure import rsq, rsq_recession
 
 from statsmodels.tsa.stattools import adfuller
 
@@ -68,17 +68,17 @@ def create_model(n_factors, encoder_width, decoder_width):
     # "encoded" is the encoded representation of the input
     encoded = layers.Dense(encoder_width, activation='relu')(input_1)
 
-    # encoded_temp = layers.Dense(encoder_width, activation='relu')(encoded)
+    encoded_temp = layers.Dense(encoder_width, activation='relu')(encoded)
 
-    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded)
+    encoded2 = layers.Dense(encoding_dim, activation='relu')(encoded_temp)
     # Add inputs to decoder
     merge = layers.Concatenate()([encoded2, input_2])
     # "decoded" is the lossy reconstruction of the input
     decoded = layers.Dense(decoder_width, activation='relu')(merge)
 
-    # decoded_temp = layers.Dense(decoder_width, activation='relu')(decoded)
+    decoded_temp = layers.Dense(decoder_width, activation='relu')(decoded)
 
-    decoded2 = layers.Dense(1, activation='linear')(decoded)
+    decoded2 = layers.Dense(1, activation='linear')(decoded_temp)
 
     # This model maps an input to its reconstruction
     autoencoder = keras.Model(inputs=[input_1, input_2], outputs=decoded2)
@@ -101,9 +101,14 @@ def test_ae(model, X_test, char_test):
     return y_hat
 
 
-def unbalanced_test_ae(model, df_unb, X, sc_x, sc_c, split):
+def unbalanced_test_ae(model, df_unb, X, sc_x, sc_c, split, rec=False):
     cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
     df_unb = df_unb[df_unb.t > cut_off]
+
+    # Remove from recession onwards
+    if rec:
+        alldates = df_unb.t - 4030
+        df_unb = df_unb[alldates < 522]
 
     X = np.array(X)
     X = X[(cut_off + 1):, :]
@@ -143,7 +148,7 @@ def direct_forecast_preprocessing(X_train, X_test, char_train, char_test, y_trai
 def indirect_forecast_preprocessing(covariates, X_train_in, X_test_in, model, horizon):
     gridsize = X_train_in.shape[1]
 
-    factor_model = keras.Model(inputs=model.inputs[0], outputs=model.layers[2].output)
+    factor_model = keras.Model(inputs=model.inputs[0], outputs=model.layers[3].output)
 
     X_train_in = X_train_in[0::gridsize, :]
     X_test_in = X_test_in[0::gridsize, :]
@@ -173,11 +178,11 @@ def indirect_forecast_preprocessing(covariates, X_train_in, X_test_in, model, ho
     y_train = sc_fy.fit_transform(y_train)
     y_test = sc_fy.transform(y_test)
 
-    partial_model = keras.Model(inputs=model.layers[4].input, outputs=model.output)
+    partial_model = keras.Model(inputs=model.layers[6].input, outputs=model.output, name='partial')
     return X_train, X_test, y_train, y_test, partial_model, sc_fx, sc_fy
 
 
-def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
+def indirect_forecast_train(X_train, y_train, n_epochs, batch_size, width):
     # Set seed
     tf.random.set_seed(1234)
 
@@ -185,8 +190,9 @@ def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
     n_inputs = X_train.shape[1]
 
     input = keras.Input(shape=(n_inputs,))
-    layer_1 = layers.Dense(round(n_inputs / 2), activation='relu')(input)
-    layer_2 = layers.Dense(n_factors, activation='linear')(layer_1)
+    layer_1 = layers.Dense(width, activation='relu')(input)
+    layer_15 = layers.Dense(width, activation='relu')(layer_1)
+    layer_2 = layers.Dense(n_factors, activation='linear')(layer_15)
     model = keras.Model(inputs=input, outputs=layer_2)
 
     model.compile(optimizer='adam', loss='mean_squared_error')
@@ -197,13 +203,48 @@ def indirect_forecast_train(X_train, y_train, n_epochs, batch_size):
     return model
 
 
-def indirect_forecast_test(trained_model, partial_model, X_test, char_test):
+def indirect_forecast_test(trained_model, partial_model, X_test, char_test, sc_fy):
     gridsize = int(char_test.shape[0] / X_test.shape[0])
 
     f_test = trained_model.predict(X_test)
+    f_test = sc_fy.inverse_transform(f_test)
     f_test = np.repeat(f_test, gridsize, axis=0)
-    y_hat = partial_model.predict([f_test, char_test])
+    # y_hat = partial_model.predict([f_test, char_test])
+    y_hat = partial_model.predict(np.concatenate((f_test, char_test), axis=1))
 
+    return y_hat
+
+
+def indirect_forecast_test_unb(trained_model, partial_model, df_unb, split, X_test, sc_fy, sc_c, rec=False, ar=False, sc_fx=None):
+    f_test = trained_model.predict(X_test)
+    f_test = sc_fy.inverse_transform(f_test)
+
+    if ar:
+        X_test_temp = sc_fx.inverse_transform(X_test)
+        f_test = X_test_temp[:, -f_test.shape[1]:]
+
+    cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+    df_unb = df_unb[df_unb.t > cut_off]
+
+    if rec:
+        alldates = df_unb.t - 4030
+        df_unb = df_unb[alldates < 522]
+
+    moneyness = np.array(df_unb.moneyness)
+    tenor = np.array(df_unb.daystoex)
+    char_test = np.append(moneyness[:, None], tenor[:, None], axis=1)
+
+    f_test_final = np.zeros((df_unb.shape[0], f_test.shape[1]))
+
+    all_t = df_unb.t.unique()
+    for _ in range(len(all_t)):
+        el = np.where(df_unb.t == all_t[_])[0]
+        f_test_final[el, :] = f_test[_, :]
+
+    char_test = sc_c.transform(char_test)
+
+    # y_hat = partial_model.predict([f_test_final, char_test])
+    y_hat = partial_model.predict(np.concatenate((f_test_final, char_test), axis=1))
     return y_hat
 
 
@@ -283,9 +324,9 @@ X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_p
 # # Optimal parameters: activation=ReLU, epochs=100, batch=84, width=64
 
 # # Train and test model
-# df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
-# cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
-# df_unb_test = df_unb[df_unb.t > cut_off]
+df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
+cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+df_unb_test = df_unb[df_unb.t > cut_off]
 #
 # r2 = np.zeros(6)
 # r2_u = np.zeros(6)
@@ -314,51 +355,221 @@ X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_p
 # X_test_factor = X_test[0::gridsize, :]
 # X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
 # factors = np.array(factor_model(X_factor))
-# adfuller(factors[:, 0])
-# adfuller(factors[:, 1])
-# adfuller(factors[:, 2])
 
-# Factor interpretation AE2 3-factor model
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_3f_0h"
+
+# # Factor interpretation AE2 3-factor model
+# tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_3f_0h"
+# trained_model = keras.models.load_model(tempdir)
+#
+# factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[3].output)
+# gridsize = X_train.shape[1]
+# X_train_factor = X_train[0::gridsize, :]
+# X_test_factor = X_test[0::gridsize, :]
+# X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
+# factors = np.array(factor_model(X_factor))
+
+
+# Direct forecast
+#
+# r2 = np.zeros((3,6))
+# r2_u = np.zeros((3,6))
+#
+# r2_rec = np.zeros((3, 6))
+# r2_ar = np.zeros((3, 6))
+#
+# horizon = np.array([1, 5, 21])
+#
+# for h in range(3):
+#     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
+#                                                                                                         X_test=X_test,
+#                                                                                                         char_train=char_train,
+#                                                                                                         char_test=char_test,
+#                                                                                                         y_train=y_train,
+#                                                                                                         y_test=y_test,
+#                                                                                                         horizon=horizon[h])
+#     for _ in range(6):
+#         model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
+#         trained_model_f = train_ae(model=model, X_train=X_train_f, X_test=X_test_f, char_train=char_train_f,
+#                                    char_test=char_test_f, y_train=y_train_f, y_test=y_test_f, epochs=100, batch_size=84)
+#
+#         y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
+#         r2[h, _] = rsq(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
+#         trained_model_f.save(tempdir)
+
+# Direct forecast test
+# for h in range(3):
+#     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
+#                                                                                                         X_test=X_test,
+#                                                                                                         char_train=char_train,
+#                                                                                                         char_test=char_test,
+#                                                                                                         y_train=y_train,
+#                                                                                                         y_test=y_test,
+#                                                                                                         horizon=horizon[h])
+#     X_f = X.values
+#     z = np.zeros((horizon[h], X_f.shape[1]))
+#     X_f = np.concatenate((z, X_f), axis=0)
+#     X_f = X_f[:-horizon[h], :]
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE1d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
+#         trained_model_f = keras.models.load_model(tempdir)
+#
+#         y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
+#         r2[h, _] = rsq(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
+#
+#         y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8)
+#         r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
+
+# # Direct forecast test until recession
+# alldates = df_unb_test.t - 4030
+# df_unb_test1 = df_unb_test[alldates < 522]
+# for h in range(3):
+#     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
+#                                                                                                         X_test=X_test,
+#                                                                                                         char_train=char_train,
+#                                                                                                         char_test=char_test,
+#                                                                                                         y_train=y_train,
+#                                                                                                         y_test=y_test,
+#                                                                                                         horizon=horizon[h])
+#     X_f = X.values
+#     z = np.zeros((horizon[h], X_f.shape[1]))
+#     X_f = np.concatenate((z, X_f), axis=0)
+#     X_f = X_f[:-horizon[h], :]
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
+#         trained_model_f = keras.models.load_model(tempdir)
+#         y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8, rec=True)
+#         r2_rec[h, _] = rsq(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
+
+
+r2 = np.zeros((3,6))
+r2_u = np.zeros((3,6))
+
+r2_rec = np.zeros((3, 6))
+r2_ar = np.zeros((3, 6))
+
+horizon = np.array([1, 5, 21])
+
+covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+covariates = covariates.drop(columns='Date')
+
+# Indirect forecast
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
+#     for h in range(3):
+#         X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+#             covariates=covariates,
+#             X_train_in=X_train,
+#             X_test_in=X_test,
+#             model=trained_model,
+#             horizon=horizon[h])
+#
+#         trained_model_if = indirect_forecast_train(X_train=X_train_if, y_train=y_train_if, n_epochs=100, batch_size=84, width=64)
+#         y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
+#                                           char_test=char_test)
+#
+#         r2[h, _] = rsq(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
+#             horizon[h]) + "h"
+#         trained_model_if.save(tempdir)
+
+
+# # Indirect forecast test
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
+#     trained_model._name = 'full'
+#     for h in range(3):
+#         X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+#             covariates=covariates,
+#             X_train_in=X_train,
+#             X_test_in=X_test,
+#             model=trained_model,
+#             horizon=horizon[h])
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE1i_" + str(_ + 1) + "f_" + str(
+#             horizon[h]) + "h"
+#         trained_model_if = keras.models.load_model(tempdir)
+#         trained_model_if._name = 'indirect'
+#
+#         y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
+#                                           char_test=char_test, sc_fy=sc_fy)
+#
+#         r2[h, _] = rsq(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
+#
+#         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
+#                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
+#
+#         r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+
+
+# # Indirect forecast test until recession
+# alldates = df_unb_test.t - 4030
+# df_unb_test1 = df_unb_test[alldates < 522]
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
+#     trained_model._name = 'full'
+#     for h in range(3):
+#         X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+#             covariates=covariates,
+#             X_train_in=X_train,
+#             X_test_in=X_test,
+#             model=trained_model,
+#             horizon=horizon[h])
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
+#             horizon[h]) + "h"
+#         trained_model_if = keras.models.load_model(tempdir)
+#         trained_model_if._name = 'indirect'
+#
+#         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
+#                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c, rec=True)
+#
+#         r2_rec[h, _] = rsq(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+
+
+# # Indirect forecast test ar term
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
+#     trained_model._name = 'full'
+#     for h in range(3):
+#         X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+#             covariates=covariates,
+#             X_train_in=X_train,
+#             X_test_in=X_test,
+#             model=trained_model,
+#             horizon=horizon[h])
+#
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
+#             horizon[h]) + "h"
+#         trained_model_if = keras.models.load_model(tempdir)
+#         trained_model_if._name = 'indirect'
+#
+#         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
+#                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c, ar=True, sc_fx=sc_fx)
+#
+#         r2_ar[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+
+_ = 0
+h = 1
+tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
 trained_model = keras.models.load_model(tempdir)
+trained_model._name = 'full'
+X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+    covariates=covariates,
+    X_train_in=X_train,
+    X_test_in=X_test,
+    model=trained_model,
+    horizon=horizon[h])
 
-factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[3].output)
-gridsize = X_train.shape[1]
-X_train_factor = X_train[0::gridsize, :]
-X_test_factor = X_test[0::gridsize, :]
-X_factor = np.concatenate((X_train_factor, X_test_factor), axis=0)
-factors = np.array(factor_model(X_factor))
-# adfuller(factors[:, 0])
-# adfuller(factors[:, 1])
-# adfuller(factors[:, 2])
-
-# # Direct forecast
-# X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train, X_test=X_test,
-#                                                                                         char_train=char_train,
-#                                                                                         char_test=char_test,
-#                                                                                         y_train=y_train, y_test=y_test,
-#                                                                                         horizon=1)
-#
-# model = create_model(n_factors=3, encoder_width=21, decoder_width=21)
-
-# # Train model
-# trained_model_f = train_ae(model=model, X_train=X_train_f, X_test=X_test_f, char_train=char_train_f, char_test=char_test_f,
-#                            y_train=y_train_f, y_test=y_test_f, epochs=10, batch_size=42)
-#
-# # Test on balanced data
-# y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
-
-# # Indirect forecast
-#
-# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-# covariates = covariates.drop(columns='Date')
-# X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
-#     covariates=covariates,
-#     X_train_in=X_train,
-#     X_test_in=X_test,
-#     model=trained_model,
-#     horizon=1)
-#
-# trained_model_if = indirect_forecast_train(X_train=X_train_if, y_train=y_train_if, n_epochs=50, batch_size=42)
-# y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
-#                                   char_test=char_test)
+tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
+    horizon[h]) + "h"
+trained_model_if = keras.models.load_model(tempdir)
+trained_model_if._name = 'indirect'
+# y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
+#                                         df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
