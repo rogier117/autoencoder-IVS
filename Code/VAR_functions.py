@@ -18,6 +18,7 @@ from statsmodels.tsa.ar_model import ar_select_order, AutoReg, AutoRegResults
 
 def train_VAR_model(f_train):
     if f_train.shape[1] > 1:
+        f_train = pos_def_check(f_train=f_train) #CHECK TOMORROW
         model = VAR(f_train)
         results = model.fit(maxlags=10, ic='bic')
         return results
@@ -49,7 +50,9 @@ def test_VAR_model(f_train, f_test, model):
 
     if y_test.shape[1] > 1:
         for i in range(n):
+            y_test = pos_def_check(f_train=y_test) #CHECK TOMORROW
             yhat_temp = model.forecast(y_test[i:i + p], 21)
+            yhat_temp = pos_def_correct(f_train=f_train, yhat_temp=yhat_temp) # CHECK TOMORROW
             f1[i] = yhat_temp[0]
             f5[i] = yhat_temp[4]
             f21[i] = yhat_temp[20]
@@ -68,6 +71,44 @@ def test_VAR_model(f_train, f_test, model):
     f21 = f21[:-20]
     result_list = list((f1, f5, f21))
     return result_list
+
+#CHECK TOMORROW
+def pos_def_check(f_train):
+    el = list()
+    pos_def = True
+    # Check which eigenvalues cause the non-positive definiteness
+    eigen = np.linalg.eigvals(np.cov(f_train.transpose()))
+    for i in range(f_train.shape[1]):
+        if eigen[i] <= 10**-6:
+            el.append(i)
+            pos_def = False
+
+    if pos_def:
+        return f_train
+
+    np.train = np.delete(el, axis=1)
+    return f_train
+
+#CHECK TOMORROW
+def pos_def_correct(f_train, yhat_temp):
+    if f_train == pos_def_check(f_train):
+        return yhat_temp
+
+    el = list()
+    # Check which eigenvalues cause the non-positive definiteness
+    eigen = np.linalg.eigvals(np.cov(f_train.transpose()))
+    for i in range(f_train.shape[1]):
+        if eigen[i] <= 10 ** -6:
+            el.append(i)
+
+    for _ in range(len(el)):
+        value = f_train[-21,el[_]]
+        insert_array = np.repeat(value, yhat_temp.shape[0])
+        insert_array.shape = (yhat_temp.shape[0], 1)
+        yhat_temp = np.hstack((yhat_temp[:, :el[_]], insert_array, yhat_temp[:, el[_]:]))
+
+    return yhat_temp
+
 
 
 if __name__ == "__main__":
