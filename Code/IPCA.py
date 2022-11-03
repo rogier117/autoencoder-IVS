@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from tensorflow import keras
 from keras import layers
 from Code.performance_measure import rsq, rsq_recession
+from Code.VAR_functions import train_VAR_model, test_VAR_model
 import tensorflow as tf
 
 import pickle
@@ -258,6 +259,20 @@ def forecast_test(model, X_test_nn_f, X_test_f, gamma, ar=False, factors=None):
     return y_hat_nn
 
 
+def forecast_test_VAR(gamma, f_hat, X_test_f):
+    X_test_fv = X_test_f.values
+    dates = np.array(X_test_f.index.get_level_values('Date'))
+    mindate = np.min(dates)
+    gamma = gamma.values
+
+    y_hat_nn = np.zeros(X_test_f.shape[0])
+    for _ in range(y_hat_nn.shape[0]):
+        # (c * gamma) * f
+        y_hat_nn[_] = np.dot(np.matmul(X_test_fv[_, :], gamma), f_hat[dates[_] - mindate])
+
+    return y_hat_nn
+
+
 def bootstrap_data(bs, X_train, y_train):
     dates = np.array([x[1] for x in X_train.index])
     maxdate = np.max(dates) + 1
@@ -437,7 +452,7 @@ horizon = np.array([1, 5, 21])
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h0"
 #         trained_model_nn = keras.models.load_model(tempdir)
 #
-#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1)
+#         y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1) # Change between b and u
 #         gammaf, factorsf = trained_model.get_factors(label_ind=True)
 #         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
 #                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
@@ -508,3 +523,40 @@ horizon = np.array([1, 5, 21])
 #                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
 #         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf, ar=True, factors=_+1)
 #         r2_ar[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
+
+
+
+# Forecasting using VAR(p)
+for h in range(3):
+    X_trainf, y_trainf, X_testf, y_testf = forecast_preprocessing(X_train_in=X_train, y_train_in=y_train,
+                                                                  X_test_in=X_test, y_test_in=y_test,
+                                                                  covariates_f=covariates, sc_x=sc_x, sc_y=sc_y,
+                                                                  horizon=horizon[h], balanced=True)
+
+    X_trainf_unb, y_trainf_unb, X_testf_unb, y_testf_unb = forecast_preprocessing(X_train_in=X_train_unb,
+                                                                                  y_train_in=y_train_unb,
+                                                                                  X_test_in=X_test_unb,
+                                                                                  y_test_in=y_test_unb,
+                                                                                  covariates_f=covariates, sc_x=sc_x,
+                                                                                  sc_y=sc_y,
+                                                                                  horizon=horizon[h], balanced=False)
+    for _ in range(6):
+        tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
+        trained_model = pickle.load(open(tempdir, "rb"))
+
+        y_hatf, factors_hatf = ipca_test(X_test_f=X_testf_unb, y_test_f=y_testf_unb, model=trained_model, n_factors=_ + 1) #Change between b and u
+        gammaf, factorsf = trained_model.get_factors(label_ind=True)
+
+        sc_f = StandardScaler()
+        f_train = sc_f.fit_transform(factorsf.values.transpose())
+        f_test = sc_f.transform(factors_hatf)
+
+        factor_model = train_VAR_model(f_train=f_train)
+        f_hat_nor = test_VAR_model(f_train=f_train, f_test=f_test, model=factor_model)[h]
+        f_hat = sc_f.inverse_transform(f_hat_nor)
+
+        y_hatff = forecast_test_VAR(gamma=gammaf, f_hat=f_hat, X_test_f=X_testf)
+        r2[h, _] = rsq(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
+        #
+        # y_hatff_unb = forecast_test_VAR(gamma=gammaf, f_hat=f_hat, X_test_f=X_testf_unb)
+        # r2_u[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)

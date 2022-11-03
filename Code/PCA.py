@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from Code.performance_measure import rsq, rsq_recession
+from Code.VAR_functions import train_VAR_model, test_VAR_model
 import pickle
 
 from statsmodels.tsa.stattools import adfuller
@@ -251,20 +252,26 @@ horizon = np.array([1, 5, 21])
 #         r2_ar[h, _] = rsq(y_test=df_unb_test.IV, y_hat=y_hat_ar, sc_y=None)
 
 
-_ = 0
-h = 1
+# Forecasting using VAR
+for _ in range(6):
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
+    pca = pickle.load(open(tempdir, "rb"))
+    f_train = pca.transform(X_train)
+    f_test = pca.transform(X_test)
 
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
-pca = pickle.load(open(tempdir, "rb"))
-f_train = pca.transform(X_train)
-f_test = pca.transform(X_test)
-X_train_f, X_test_f, y_train_f, y_test_f, scfy, scfx = forecast_pre_processing(covariates=covariates,
-                                                                               f_train=f_train,
-                                                                               f_test=f_test, horizon=horizon[h])
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\PCA\PCA_" + str(_ + 1) + "f_" + str(
-    horizon[h]) + "h"
-fmodel = keras.models.load_model(tempdir)
-X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
-X_hat = sc.inverse_transform(X_hat_f)
-y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
-r2_u[h, _] = rsq(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)
+    scf = StandardScaler()
+    f_train = scf.fit_transform(f_train)
+    f_test = scf.transform(f_test)
+
+    model = train_VAR_model(f_train=f_train)
+    result_list = test_VAR_model(f_train=f_train, f_test=f_test, model=model)
+
+    for h in range(3):
+        f_hat_nor = result_list[h]
+        f_hat = scf.inverse_transform(f_hat_nor)
+        X_hat_f = pca.inverse_transform(f_hat)
+        r2[h, _] = rsq(y_test=X_test, y_hat=X_hat_f, sc_y=sc)
+        #
+        # X_hat = sc.inverse_transform(X_hat_f)
+        # y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+        # r2_u[h, _] = rsq(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)

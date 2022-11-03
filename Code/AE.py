@@ -16,6 +16,7 @@ import tensorflow as tf
 from tensorflow import keras
 from keras import layers
 from Code.performance_measure import rsq, rsq_recession
+from Code.VAR_functions import train_VAR_model, test_VAR_model
 
 from statsmodels.tsa.stattools import adfuller
 
@@ -246,6 +247,58 @@ def indirect_forecast_test_unb(trained_model, partial_model, df_unb, split, X_te
     # y_hat = partial_model.predict([f_test_final, char_test])
     y_hat = partial_model.predict(np.concatenate((f_test_final, char_test), axis=1))
     return y_hat
+
+
+def indirect_forecast_test_VAR(trained_model, X_train, X_test, df_unb, char_test, nlayers, sc_c, balanced):
+    factor_model = keras.Model(inputs=trained_model.inputs[0], outputs=trained_model.layers[nlayers+1].output)
+    partial_model = keras.Model(inputs=trained_model.layers[nlayers+4].input, outputs=trained_model.output, name='partial')
+
+    gridsize = X_train.shape[1]
+
+    X_train = X_train[0::gridsize, :]
+    X_test = X_test[0::gridsize, :]
+
+    f_train = factor_model(X_train)
+    f_train = np.array(f_train)
+
+    f_test = factor_model(X_test)
+    f_test = np.array(f_test)
+
+    sc_f = StandardScaler()
+    f_train_nor = sc_f.fit_transform(f_train)
+    f_test_nor = sc_f.transform(f_test)
+
+    model = train_VAR_model(f_train=f_train_nor)
+    result_list = test_VAR_model(f_train=f_train_nor, f_test=f_test_nor, model=model)
+    yhat_list = list()
+
+    for h in range(3):
+        f_hat_temp = result_list[h]
+        f_hat = sc_f.inverse_transform(f_hat_temp)
+        if balanced:  
+            f_hat = np.repeat(f_hat, gridsize, axis=0)
+            y_hat = partial_model.predict(np.concatenate((f_hat, char_test), axis=1))
+            yhat_list.append(y_hat)
+            
+        else:
+            split = 0.8
+            cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+            df_unb = df_unb[df_unb.t > cut_off]
+            
+            moneyness = np.array(df_unb.moneyness)
+            tenor = np.array(df_unb.daystoex)
+            char_test = np.append(moneyness[:, None], tenor[:, None], axis=1)
+            char_test = sc_c.transform(char_test)
+            
+            f_hat_final = np.zeros((df_unb.shape[0], f_hat.shape[1]))
+
+            all_t = df_unb.t.unique()
+            for _ in range(len(all_t)):
+                el = np.where(df_unb.t == all_t[_])[0]
+                f_hat_final[el, :] = f_hat[_, :]
+            y_hat = partial_model.predict(np.concatenate((f_hat_final, char_test), axis=1))
+            yhat_list.append(y_hat)
+    return yhat_list
 
 
 def bootstrap_data(bs, X_train, char_train, y_train):
@@ -555,21 +608,19 @@ covariates = covariates.drop(columns='Date')
 #
 #         r2_ar[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
 
-_ = 0
-h = 1
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
-trained_model = keras.models.load_model(tempdir)
-trained_model._name = 'full'
-X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
-    covariates=covariates,
-    X_train_in=X_train,
-    X_test_in=X_test,
-    model=trained_model,
-    horizon=horizon[h])
 
-tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
-    horizon[h]) + "h"
-trained_model_if = keras.models.load_model(tempdir)
-trained_model_if._name = 'indirect'
-# y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
-#                                         df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
+# Forecast using VAR(p)
+for _ in range(6):
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+    trained_model = keras.models.load_model(tempdir)
+    trained_model._name = 'full'
+
+    yhat_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
+                                           char_test=char_test, nlayers=2, sc_c=sc_c, balanced=True)
+    for h in range(3):
+        r2[h, _] = rsq(y_test=y_test, y_hat=yhat_list[h], sc_y=sc_y)
+
+    # yhat_u_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
+    #                                        char_test=char_test, nlayers=1, sc_c=sc_c, balanced=False)
+    # for h in range(3):
+    #     r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=yhat_u_list[h], sc_y=sc_y)
