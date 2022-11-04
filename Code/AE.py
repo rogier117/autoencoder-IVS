@@ -15,7 +15,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
-from Code.performance_measure import rsq, rsq_recession
+from Code.performance_measure import rsq, rsq_recession, ivrmse
 from Code.VAR_functions import train_VAR_model, test_VAR_model
 
 from statsmodels.tsa.stattools import adfuller
@@ -269,27 +269,33 @@ def indirect_forecast_test_VAR(trained_model, X_train, X_test, df_unb, char_test
     f_test_nor = sc_f.transform(f_test)
 
     model = train_VAR_model(f_train=f_train_nor)
-    result_list = test_VAR_model(f_train=f_train_nor, f_test=f_test_nor, model=model)
+    el = None
+    if isinstance(model, tuple):
+        el = model[1]
+        model = model[0]
+    result_list = test_VAR_model(f_train=f_train_nor, f_test=f_test_nor, model=model, el=el)
     yhat_list = list()
 
-    for h in range(3):
-        f_hat_temp = result_list[h]
-        f_hat = sc_f.inverse_transform(f_hat_temp)
-        if balanced:  
+    if balanced:
+        for h in range(3):
+            f_hat_temp = result_list[h]
+            f_hat = sc_f.inverse_transform(f_hat_temp)
             f_hat = np.repeat(f_hat, gridsize, axis=0)
             y_hat = partial_model.predict(np.concatenate((f_hat, char_test), axis=1))
             yhat_list.append(y_hat)
-            
-        else:
-            split = 0.8
-            cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
-            df_unb = df_unb[df_unb.t > cut_off]
-            
+
+    else:
+        split = 0.8
+        cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
+        df_unb = df_unb[df_unb.t > cut_off]
+        for h in range(3):
+            f_hat_temp = result_list[h]
+            f_hat = sc_f.inverse_transform(f_hat_temp)
             moneyness = np.array(df_unb.moneyness)
             tenor = np.array(df_unb.daystoex)
             char_test = np.append(moneyness[:, None], tenor[:, None], axis=1)
             char_test = sc_c.transform(char_test)
-            
+
             f_hat_final = np.zeros((df_unb.shape[0], f_hat.shape[1]))
 
             all_t = df_unb.t.unique()
@@ -344,7 +350,7 @@ def bootstrap(X_train, char_train, y_train, bs, sc_y, epochs, batch_size, width)
     y_train_f = y_train[:]
 
     X_train_temp, X_test_temp, char_train_temp, char_test_temp, y_train_temp, y_test_temp = bootstrap_data(bs=bs, X_train=X_train_f, char_train=char_train_f, y_train=y_train_f)
-    r2_temp = np.zeros(bs)
+    rmse_temp = np.zeros(bs)
 
     for i in range(bs):
         model = create_model(n_factors=3, encoder_width=width, decoder_width=width)
@@ -352,9 +358,9 @@ def bootstrap(X_train, char_train, y_train, bs, sc_y, epochs, batch_size, width)
                                  char_test=char_test_temp[i], y_train=y_train_temp[i], y_test=y_test_temp[i],
                                  epochs=epochs, batch_size=batch_size)
         y_hat = test_ae(model=trained_model, X_test=X_test_temp[i], char_test=char_test_temp[i])
-        r2_temp[i] = rsq(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
-    r2 = np.mean(r2_temp)
-    return r2
+        rmse_temp[i] = ivrmse(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
+    rmse = np.mean(rmse_temp)
+    return rmse
 
 
 X = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\X balanced.csv')
@@ -370,33 +376,35 @@ X_train, X_test, char_train, char_test, y_train, y_test, sc_x, sc_y, sc_c = ae_p
 # batch = np.array([42, 84])
 # width = np.array([32, 64, 128])
 # grid = np.array(np.meshgrid(epochs, batch, width)).T.reshape(-1,3)
-# r2 = np.zeros(grid.shape[0])
+# rmse = np.zeros(grid.shape[0])
 #
 # for _ in range(grid.shape[0]):
-#     r2[_] = bootstrap(X_train=X_train, char_train=char_train, y_train=y_train, bs=5, sc_y=sc_y, epochs=grid[_, 0], batch_size=grid[_, 1], width=grid[_, 2])
+#     rmse[_] = bootstrap(X_train=X_train, char_train=char_train, y_train=y_train, bs=5, sc_y=sc_y, epochs=grid[_, 0], batch_size=grid[_, 1], width=grid[_, 2])
 # # Optimal parameters: activation=ReLU, epochs=100, batch=84, width=64
 
 # # Train and test model
 df_unb = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\option data unbalanced.csv')
 cut_off = df_unb.t.unique()[round(len(df_unb.t.unique()) * split)]
 df_unb_test = df_unb[df_unb.t > cut_off]
-#
-# r2 = np.zeros(6)
-# r2_u = np.zeros(6)
+
+# rmse = np.zeros(6)
+# rmse_u = np.zeros(6)
 # for _ in range(6):
-#     model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
-#
-#     trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
-#                              y_train=y_train, y_test=y_test, epochs=100, batch_size=84)
+#     # model = create_model(n_factors=_+1, encoder_width=64, decoder_width=64)
+#     #
+#     # trained_model = train_ae(model=model, X_train=X_train, X_test=X_test, char_train=char_train, char_test=char_test,
+#     #                          y_train=y_train, y_test=y_test, epochs=100, batch_size=84)
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
 #     y_hat = test_ae(model=trained_model, X_test=X_test, char_test=char_test)
-#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#     rmse[_] = ivrmse(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
 #
 #     # Unbalanced testing
 #     y_hat_unb = unbalanced_test_ae(model=trained_model, df_unb=df_unb, sc_x=sc_x, sc_c=sc_c, X=X, split=split)
-#     r2_u[_] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_unb, sc_y=sc_y)
+#     rmse_u[_] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_unb, sc_y=sc_y)
 #
-#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
-#     trained_model.save(tempdir)
+#     # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
+#     # trained_model.save(tempdir)
 
 # # Factor interpretation AE1 3-factor model
 # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_3f_0h"
@@ -423,14 +431,14 @@ df_unb_test = df_unb[df_unb.t > cut_off]
 
 
 # Direct forecast
-#
-# r2 = np.zeros((3,6))
-# r2_u = np.zeros((3,6))
-#
-# r2_rec = np.zeros((3, 6))
-# r2_ar = np.zeros((3, 6))
-#
-# horizon = np.array([1, 5, 21])
+
+rmse = np.zeros((3,6))
+rmse_u = np.zeros((3,6))
+
+rmse_rec = np.zeros((3, 6))
+rmse_ar = np.zeros((3, 6))
+
+horizon = np.array([1, 5, 21])
 #
 # for h in range(3):
 #     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
@@ -446,33 +454,33 @@ df_unb_test = df_unb[df_unb.t > cut_off]
 #                                    char_test=char_test_f, y_train=y_train_f, y_test=y_test_f, epochs=100, batch_size=84)
 #
 #         y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
-#         r2[h, _] = rsq(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
+#         rmse[h, _] = ivrmse(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
 #
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
 #         trained_model_f.save(tempdir)
 
 # Direct forecast test
-# for h in range(3):
-#     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
-#                                                                                                         X_test=X_test,
-#                                                                                                         char_train=char_train,
-#                                                                                                         char_test=char_test,
-#                                                                                                         y_train=y_train,
-#                                                                                                         y_test=y_test,
-#                                                                                                         horizon=horizon[h])
-#     X_f = X.values
-#     z = np.zeros((horizon[h], X_f.shape[1]))
-#     X_f = np.concatenate((z, X_f), axis=0)
-#     X_f = X_f[:-horizon[h], :]
-#     for _ in range(6):
-#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE1d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
-#         trained_model_f = keras.models.load_model(tempdir)
-#
-#         y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
-#         r2[h, _] = rsq(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
-#
-#         y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8)
-#         r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
+for h in range(3):
+    X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
+                                                                                                        X_test=X_test,
+                                                                                                        char_train=char_train,
+                                                                                                        char_test=char_test,
+                                                                                                        y_train=y_train,
+                                                                                                        y_test=y_test,
+                                                                                                        horizon=horizon[h])
+    X_f = X.values
+    z = np.zeros((horizon[h], X_f.shape[1]))
+    X_f = np.concatenate((z, X_f), axis=0)
+    X_f = X_f[:-horizon[h], :]
+    for _ in range(6):
+        tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
+        trained_model_f = keras.models.load_model(tempdir)
+
+        y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
+        rmse[h, _] = ivrmse(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
+
+        y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8)
+        rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
 
 # # Direct forecast test until recession
 # alldates = df_unb_test.t - 4030
@@ -493,19 +501,19 @@ df_unb_test = df_unb[df_unb.t > cut_off]
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
 #         trained_model_f = keras.models.load_model(tempdir)
 #         y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8, rec=True)
-#         r2_rec[h, _] = rsq(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
+#         rmse_rec[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
 
 
-r2 = np.zeros((3,6))
-r2_u = np.zeros((3,6))
-
-r2_rec = np.zeros((3, 6))
-r2_ar = np.zeros((3, 6))
-
-horizon = np.array([1, 5, 21])
-
-covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-covariates = covariates.drop(columns='Date')
+# rmse = np.zeros((3,6))
+# rmse_u = np.zeros((3,6))
+#
+# rmse_rec = np.zeros((3, 6))
+# rmse_ar = np.zeros((3, 6))
+#
+# horizon = np.array([1, 5, 21])
+#
+# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+# covariates = covariates.drop(columns='Date')
 
 # Indirect forecast
 # for _ in range(6):
@@ -523,7 +531,7 @@ covariates = covariates.drop(columns='Date')
 #         y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
 #                                           char_test=char_test)
 #
-#         r2[h, _] = rsq(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
+#         rmse[h, _] = ivrmse(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
 #
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
 #             horizon[h]) + "h"
@@ -551,12 +559,12 @@ covariates = covariates.drop(columns='Date')
 #         y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
 #                                           char_test=char_test, sc_fy=sc_fy)
 #
-#         r2[h, _] = rsq(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
+#         rmse[h, _] = ivrmse(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
 #
 #         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
 #                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
 #
-#         r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+#         rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
 
 
 # # Indirect forecast test until recession
@@ -582,7 +590,7 @@ covariates = covariates.drop(columns='Date')
 #         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
 #                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c, rec=True)
 #
-#         r2_rec[h, _] = rsq(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+#         rmse_rec[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
 
 
 # # Indirect forecast test ar term
@@ -606,21 +614,21 @@ covariates = covariates.drop(columns='Date')
 #         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
 #                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c, ar=True, sc_fx=sc_fx)
 #
-#         r2_ar[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+#         rmse_ar[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
 
 
-# Forecast using VAR(p)
-for _ in range(6):
-    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
-    trained_model = keras.models.load_model(tempdir)
-    trained_model._name = 'full'
-
-    yhat_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
-                                           char_test=char_test, nlayers=2, sc_c=sc_c, balanced=True)
-    for h in range(3):
-        r2[h, _] = rsq(y_test=y_test, y_hat=yhat_list[h], sc_y=sc_y)
-
-    # yhat_u_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
-    #                                        char_test=char_test, nlayers=1, sc_c=sc_c, balanced=False)
-    # for h in range(3):
-    #     r2_u[h, _] = rsq(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=yhat_u_list[h], sc_y=sc_y)
+# # Forecast using VAR(p)
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+#     trained_model = keras.models.load_model(tempdir)
+#     trained_model._name = 'full'
+#
+#     yhat_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
+#                                            char_test=char_test, nlayers=2, sc_c=sc_c, balanced=True)
+#     for h in range(3):
+#         rmse[h, _] = ivrmse(y_test=y_test, y_hat=yhat_list[h], sc_y=sc_y)
+#
+#     yhat_u_list = indirect_forecast_test_VAR(trained_model=trained_model, X_train=X_train, X_test=X_test, df_unb=df_unb,
+#                                              char_test=char_test, nlayers=2, sc_c=sc_c, balanced=False)
+#     for h in range(3):
+#         rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=yhat_u_list[h], sc_y=sc_y)

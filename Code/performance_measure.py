@@ -48,3 +48,24 @@ def rsq_recession(y_test, y_hat, sc_y, horizon):
     denom = np.sum(y_test**2)
     rsquared = 1 - num/denom
     return rsquared
+
+
+def ivrmse(y_test, y_hat, sc_y):
+
+    if y_test.shape.__len__() == 1 and isinstance(y_test, pd.Series):
+        y_test = y_test.values.reshape(-1, 1)
+    elif y_test.shape.__len__() == 1:
+        y_test = y_test.reshape(-1, 1)
+    if y_hat.shape.__len__() == 1:
+        y_hat = y_hat.reshape(-1, 1)
+
+    if sc_y is not None:
+        y_test = sc_y.inverse_transform(y_test)
+        y_hat = sc_y.inverse_transform(y_hat)
+
+    y_test = y_test.flatten()
+    y_hat = y_hat.flatten()
+
+    square = np.sum((y_test - y_hat)**2) / y_test.shape[0]
+    rmse = np.sqrt(square)
+    return rmse

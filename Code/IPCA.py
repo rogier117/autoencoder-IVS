@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 
 from tensorflow import keras
 from keras import layers
-from Code.performance_measure import rsq, rsq_recession
+from Code.performance_measure import rsq, rsq_recession, ivrmse
 from Code.VAR_functions import train_VAR_model, test_VAR_model
 import tensorflow as tf
 
@@ -308,37 +308,37 @@ def bootstrap(X_train, bs, y_train, sc_y):
     y_train_f = y_train.copy()
 
     X_train_temp, X_test_temp, y_train_temp, y_test_temp = bootstrap_data(bs=bs, X_train=X_train_f, y_train=y_train_f)
-    r2_temp = np.zeros(bs)
+    rmse_temp = np.zeros(bs)
 
     for i in range(bs):
         model = ipca_train(X_train_f=X_train_temp[i], y_train_f=y_train_temp[i], n_factors=3, max_iter=50)
         y_hat, f_hat = ipca_test(X_test_f=X_test_temp[i], y_test_f=y_test_temp[i], model=model, n_factors=3)
-        r2_temp[i] = rsq(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
+        rmse_temp[i] = ivrmse(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
 
-    boundary = np.mean(r2_temp)
+    boundary = np.mean(rmse_temp)
 
     while not done:
-        r2_unb = np.zeros(X_train_f.shape[1])
+        rmse_unb = np.zeros(X_train_f.shape[1])
         for _ in range(X_train_f.shape[1]):
             X_train_col = X_train_f.drop(X_train_f.columns[_], axis=1)
             X_train_temp, X_test_temp, y_train_temp, y_test_temp = bootstrap_data(bs=bs, X_train=X_train_col,
                                                                                   y_train=y_train)
-            r2_temp = np.zeros(bs)
+            rmse_temp = np.zeros(bs)
 
             for i in range(bs):
                 model = ipca_train(X_train_f=X_train_temp[i], y_train_f=y_train_temp[i], n_factors=3, max_iter=50)
                 y_hat, f_hat = ipca_test(X_test_f=X_test_temp[i], y_test_f=y_test_temp[i], model=model, n_factors=3)
-                r2_temp[i] = rsq(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
+                rmse_temp[i] = ivrmse(y_test=y_test_temp[i], y_hat=y_hat, sc_y=sc_y)
 
-            r2_unb[_] = np.mean(r2_temp)
+            rmse_unb[_] = np.mean(rmse_temp)
 
-        if np.max(r2_unb) < boundary:
+        if np.max(rmse_unb) < boundary:
             done = True
         else:
-            arg = np.argmax(r2_unb)
+            arg = np.argmax(rmse_unb)
             removed.append(X_train_f.columns[arg])
             X_train_f = X_train_f.drop(X_train.columns[arg], axis=1)
-            boundary = np.max(r2_unb)
+            boundary = np.max(rmse_unb)
     return removed
 
 
@@ -370,19 +370,21 @@ X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_u
 
 # # Train models for 1 to 6 factors
 #
-# r2 = np.zeros(6)
-# r2_unb = np.zeros(6)
+# rmse = np.zeros(6)
+# rmse_unb = np.zeros(6)
 #
 # for _ in range(6):
-#     model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=_+1, max_iter=300)
+#     # model = ipca_train(X_train_f=X_train_unb, y_train_f=y_train_unb, n_factors=_+1, max_iter=300)
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAu_" + str(_+1) + "f_0h"
+#     model = pickle.load(open(tempdir, "rb"))
 #     y_hat, f_hat = ipca_test(X_test_f=X_test, y_test_f=y_test, model=model, n_factors=_+1)
-#     r2[_] = rsq(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
+#     rmse[_] = ivrmse(y_test=y_test, y_hat=y_hat, sc_y=sc_y)
 #
 #     y_hat_unb, f_hat_unb = ipca_test(X_test_f=X_test_unb, y_test_f=y_test_unb, model=model, n_factors=_+1)
-#     r2_unb[_] = rsq(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
+#     rmse_unb[_] = ivrmse(y_test=y_test_unb, y_hat=y_hat_unb, sc_y=sc_y)
 #
-#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAu_" + str(_ + 1) + "f_0h"
-#     pickle.dump(model, open(tempdir, 'wb'))
+#     # tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\IPCA\IPCAu_" + str(_ + 1) + "f_0h"
+#     # pickle.dump(model, open(tempdir, 'wb'))
 #
 #
 # # Factor interpretation 1-factor model
@@ -396,11 +398,11 @@ X_train_unb, y_train_unb, X_test_unb, y_test_unb = unbalanced_preprocessing(df_u
 
 
 # Forecast
-r2 = np.zeros((3, 6))
-r2_u = np.zeros((3, 6))
+rmse = np.zeros((3, 6))
+rmse_u = np.zeros((3, 6))
 
-r2_rec = np.zeros((3, 6))
-r2_ar = np.zeros((3, 6))
+rmse_rec = np.zeros((3, 6))
+rmse_ar = np.zeros((3, 6))
 
 horizon = np.array([1, 5, 21])
 
@@ -423,7 +425,7 @@ horizon = np.array([1, 5, 21])
 #                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
 #         model_nn = forecast_train(X_f=X_train_nn, y_f=y_train_nn, n_epochs=100, batch_size=84, width=64)
 #         y_hatff = forecast_test(model=model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf)
-#         r2[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff, sc_y=sc_y)
+#         rmse[h, _] = ivrmse(y_test=y_testf_unb, y_hat=y_hatff, sc_y=sc_y)
 #
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\IPCA\IPCAu_" + str(_ + 1) + "f_" + str(horizon[h]) + "h1"
 #         pickle.dump(modelf, open(tempdir, 'wb'))
@@ -457,10 +459,10 @@ horizon = np.array([1, 5, 21])
 #         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
 #                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
 #         y_hatff = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf, gamma=gammaf)
-#         r2[h, _] = rsq(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
+#         rmse[h, _] = ivrmse(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
 #
 #         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf)
-#         r2_u[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
+#         rmse_u[h, _] = ivrmse(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
 
 
 # Forecast test without recession
@@ -492,7 +494,7 @@ horizon = np.array([1, 5, 21])
 #         alldates = np.array([x[1] for x in X_testf_unb.index]) - 4030
 #         X_testf_unb1 = X_testf_unb[alldates < 522]
 #         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb1, gamma=gammaf)
-#         r2_rec[h, _] = rsq(y_test=y_testf_unb.iloc[:y_hatff_unb.shape[0]], y_hat=y_hatff_unb, sc_y=sc_y)
+#         rmse_rec[h, _] = ivrmse(y_test=y_testf_unb.iloc[:y_hatff_unb.shape[0]], y_hat=y_hatff_unb, sc_y=sc_y)
 
 
 
@@ -522,7 +524,7 @@ horizon = np.array([1, 5, 21])
 #         X_train_nn, y_train_nn, X_test_nn, y_test_nn = nn_preprocessing(covariates_f=covariates, factors_f=factorsf,
 #                                                                         factors_test_f=factors_hatf, horizon=horizon[h])
 #         y_hatff_unb = forecast_test(model=trained_model_nn, X_test_nn_f=X_test_nn, X_test_f=X_testf_unb, gamma=gammaf, ar=True, factors=_+1)
-#         r2_ar[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
+#         rmse_ar[h, _] = ivrmse(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
 
 
 
@@ -556,7 +558,7 @@ for h in range(3):
         f_hat = sc_f.inverse_transform(f_hat_nor)
 
         y_hatff = forecast_test_VAR(gamma=gammaf, f_hat=f_hat, X_test_f=X_testf)
-        r2[h, _] = rsq(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
-        #
-        # y_hatff_unb = forecast_test_VAR(gamma=gammaf, f_hat=f_hat, X_test_f=X_testf_unb)
-        # r2_u[h, _] = rsq(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)
+        rmse[h, _] = ivrmse(y_test=y_testf, y_hat=y_hatff, sc_y=sc_y)
+
+        y_hatff_unb = forecast_test_VAR(gamma=gammaf, f_hat=f_hat, X_test_f=X_testf_unb)
+        rmse_u[h, _] = ivrmse(y_test=y_testf_unb, y_hat=y_hatff_unb, sc_y=sc_y)

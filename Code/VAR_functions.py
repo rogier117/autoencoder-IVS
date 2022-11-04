@@ -18,10 +18,18 @@ from statsmodels.tsa.ar_model import ar_select_order, AutoReg, AutoRegResults
 
 def train_VAR_model(f_train):
     if f_train.shape[1] > 1:
-        f_train = pos_def_check(f_train=f_train) #CHECK TOMORROW
-        model = VAR(f_train)
-        results = model.fit(maxlags=10, ic='bic')
-        return results
+        f_train_list = pos_def_check(f_train=f_train)
+        if isinstance(f_train_list, tuple):
+            f_train = f_train_list[0]
+            el = f_train_list[1]
+            model = VAR(f_train)
+            results = model.fit(maxlags=10, ic='bic')
+            return results, el
+        else:
+            f_train = f_train_list
+            model = VAR(f_train)
+            results = model.fit(maxlags=10, ic='bic')
+            return results
     else:
         model = ar_select_order(f_train, maxlag=10, ic='bic')
         if model.ar_lags is not None:
@@ -33,7 +41,7 @@ def train_VAR_model(f_train):
         return results
 
 
-def test_VAR_model(f_train, f_test, model):
+def test_VAR_model(f_train, f_test, model, el=None):
     if f_train.shape[1] > 1:
         p = model.k_ar
     else:
@@ -49,8 +57,9 @@ def test_VAR_model(f_train, f_test, model):
     f1 = np.zeros((n, y_test.shape[1]))
 
     if y_test.shape[1] > 1:
+        if el is not None:
+            y_test = np.delete(arr=y_test, obj=el, axis=1)
         for i in range(n):
-            y_test = pos_def_check(f_train=y_test) #CHECK TOMORROW
             yhat_temp = model.forecast(y_test[i:i + p], 21)
             yhat_temp = pos_def_correct(f_train=f_train, yhat_temp=yhat_temp) # CHECK TOMORROW
             f1[i] = yhat_temp[0]
@@ -86,12 +95,12 @@ def pos_def_check(f_train):
     if pos_def:
         return f_train
 
-    np.train = np.delete(el, axis=1)
-    return f_train
+    f_train = np.delete(arr=f_train, obj=el, axis=1)
+    return f_train, el
 
 #CHECK TOMORROW
 def pos_def_correct(f_train, yhat_temp):
-    if f_train == pos_def_check(f_train):
+    if np.array_equal(f_train, pos_def_check(f_train)):
         return yhat_temp
 
     el = list()
@@ -102,7 +111,7 @@ def pos_def_correct(f_train, yhat_temp):
             el.append(i)
 
     for _ in range(len(el)):
-        value = f_train[-21,el[_]]
+        value = np.mean(f_train[:,el[_]])
         insert_array = np.repeat(value, yhat_temp.shape[0])
         insert_array.shape = (yhat_temp.shape[0], 1)
         yhat_temp = np.hstack((yhat_temp[:, :el[_]], insert_array, yhat_temp[:, el[_]:]))
