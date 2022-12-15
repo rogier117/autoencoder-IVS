@@ -30,10 +30,10 @@ amount = df.t.value_counts().sort_index()
 # Make 3D plot of one day
 day = amount.argmax()
 temp2 = df[df.t == day]
-temp = temp2[temp2.daystoex >= 10]
-temp = temp[temp.daystoex <= 252]
-temp = temp[temp.moneyness >= 0.9]
-temp = temp[temp.moneyness <= 1.3]
+# temp = temp2[temp2.daystoex >= 10]
+# temp = temp[temp.daystoex <= 252]
+# temp = temp[temp.moneyness >= 0.9]
+# temp = temp[temp.moneyness <= 1.3]
 
 # fig = plt.figure()
 # ax = plt.axes(projection='3d')
@@ -46,43 +46,43 @@ temp = temp[temp.moneyness <= 1.3]
 # ax.set_zlabel("Implied Volatility")
 # # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\3D plot most not zoom.png")
 #
-# # Make FULL 3D plot of a day
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-#
-# ax.plot_trisurf(temp2.moneyness, temp2.daystoex, temp2.IV, cmap=cm.jet)
-# ax.view_init(elev=14, azim=123)
-# # ax.set_title('surface')
-# ax.set_xlabel("Moneyness")
-# ax.set_ylabel("Tenor (days)")
-# ax.set_zlabel("Implied Volatility")
+# Make FULL 3D plot of a day
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+ax.plot_trisurf(temp2.moneyness, temp2.daystoex, temp2.IV, cmap=cm.jet)
+ax.view_init(elev=14, azim=123)
+# ax.set_title('surface')
+ax.set_xlabel("Moneyness")
+ax.set_ylabel("Tenor (days)")
+ax.set_zlabel("Implied Volatility")
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\3D plot most full not zoom.png")
 
 # Make 3D plot of same day, but balanced panel
 day = amount.argmax()
 temp = df_bal[df_bal.t == day]
 
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-#
-# ax.plot_trisurf(temp.moneyness, temp.daystoex, temp.IV, cmap=cm.jet)
-# ax.view_init(elev=14, azim=123)
-# # ax.set_title('surface')
-# ax.set_xlabel("Moneyness")
-# ax.set_ylabel("Tenor (days)")
-# ax.set_zlabel("Implied Volatility")
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+ax.plot_trisurf(temp.moneyness, temp.daystoex, temp.IV, cmap=cm.jet)
+ax.view_init(elev=14, azim=123)
+# ax.set_title('surface')
+ax.set_xlabel("Moneyness")
+ax.set_ylabel("Tenor (days)")
+ax.set_zlabel("Implied Volatility")
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\3D plot most balanced not zoom.png")
 
-# Make 3D plot of average IV for the balanced panel
-temp = pd.DataFrame()
-temp['moneyness'] = df_bal[df_bal.t == 0].moneyness
-temp['daystoex'] = df_bal[df_bal.t == 0].daystoex
-IV = np.zeros(temp.shape[0])
-for _ in range(temp.shape[0]):
-    temp2 = df_bal[df_bal.moneyness == temp.moneyness[_]]
-    temp2 = temp2[temp2.daystoex == temp.daystoex[_]]
-    IV[_] = np.mean(temp2.IV)
-temp['IV'] = IV
+# # Make 3D plot of average IV for the balanced panel
+# temp = pd.DataFrame()
+# temp['moneyness'] = df_bal[df_bal.t == 0].moneyness
+# temp['daystoex'] = df_bal[df_bal.t == 0].daystoex
+# IV = np.zeros(temp.shape[0])
+# for _ in range(temp.shape[0]):
+#     temp2 = df_bal[df_bal.moneyness == temp.moneyness[_]]
+#     temp2 = temp2[temp2.daystoex == temp.daystoex[_]]
+#     IV[_] = np.mean(temp2.IV)
+# temp['IV'] = IV
 
 # fig = plt.figure()
 # ax = plt.axes(projection='3d')
@@ -96,11 +96,11 @@ temp['IV'] = IV
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\3D plot balanced not zoom.png")
 
 # Plot the characteristics of the IVS over time: Level, skew, term structure.
-# Level
-level = np.zeros(SPX.shape[0])
-for _ in range(len(level)):
-    temp = df_bal[df_bal.t == _]
-    level[_] = np.mean(temp.IV)
+# # Level
+# level = np.zeros(SPX.shape[0])
+# for _ in range(len(level)):
+#     temp = df_bal[df_bal.t == _]
+#     level[_] = np.mean(temp.IV)
 
 # plt.figure()
 # plt.plot(SPX.Date, level, '-', c='black', linewidth=0.5)
@@ -109,13 +109,13 @@ for _ in range(len(level)):
 # plt.show()
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV level.png")
 
-# Skew (STILL NOT SURE IF IT IS RIGHT)
-skew = np.zeros(SPX.shape[0])
-for _ in range(len(skew)):
-    temp = df_bal[df_bal.t == _]
-    high = temp[temp.moneyness == np.max(temp.moneyness)].IV.reset_index(drop=True)
-    low = temp[temp.moneyness == np.min(temp.moneyness)].IV.reset_index(drop=True)
-    skew[_] = np.mean(high - low)
+# # Skew (STILL NOT SURE IF IT IS RIGHT)
+# skew = np.zeros(SPX.shape[0])
+# for _ in range(len(skew)):
+#     temp = df_bal[df_bal.t == _]
+#     high = temp[temp.moneyness == np.max(temp.moneyness)].IV.reset_index(drop=True)
+#     low = temp[temp.moneyness == np.min(temp.moneyness)].IV.reset_index(drop=True)
+#     skew[_] = np.mean(high - low)
 
 # plt.figure()
 # plt.plot(SPX.Date, skew, '-', c='black', linewidth=0.5)
@@ -124,13 +124,13 @@ for _ in range(len(skew)):
 # plt.show()
 # plt.savefig(r"D:\Master Thesis\autoencoder-IVS\Figures\IV skew.png")
 
-# Term Structure
-term_structure = np.zeros(SPX.shape[0])
-for _ in range(len(term_structure)):
-    temp = df_bal[df_bal.t == _]
-    long = temp[temp.daystoex == np.max(temp.daystoex)].IV.reset_index(drop=True)
-    short = temp[temp.daystoex == np.min(temp.daystoex)].IV.reset_index(drop=True)
-    term_structure[_] = np.mean(long - short)
+# # Term Structure
+# term_structure = np.zeros(SPX.shape[0])
+# for _ in range(len(term_structure)):
+#     temp = df_bal[df_bal.t == _]
+#     long = temp[temp.daystoex == np.max(temp.daystoex)].IV.reset_index(drop=True)
+#     short = temp[temp.daystoex == np.min(temp.daystoex)].IV.reset_index(drop=True)
+#     term_structure[_] = np.mean(long - short)
 
 # plt.figure()
 # plt.plot(SPX.Date, term_structure, '-', c='black', linewidth=0.5)

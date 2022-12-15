@@ -172,21 +172,21 @@ sc, X_train, X_test = pca_preprocessing(X=X)
 # f = sc_f.fit_transform(f)
 #
 #
-# Forecasting
-covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-dates = covariates.loc[:, 'Date']
-dates = dates[21:].reset_index(drop=True)
-dates = pd.to_datetime(dates, format='%Y-%m-%d')
-test_dates = dates[-1006:].reset_index(drop=True)
-covariates = covariates.drop(columns='Date')
-
-rmse = np.zeros((3, 6))
-rmse_u = np.zeros((3, 6))
-
-rmse_rec = np.zeros((3, 6))
-rmse_ar = np.zeros((3, 6))
-
-horizon = np.array([1, 5, 21])
+# # Forecasting
+# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+# dates = covariates.loc[:, 'Date']
+# dates = dates[21:].reset_index(drop=True)
+# dates = pd.to_datetime(dates, format='%Y-%m-%d')
+# test_dates = dates[-1006:].reset_index(drop=True)
+# covariates = covariates.drop(columns='Date')
+#
+# rmse = np.zeros((3, 6))
+# rmse_u = np.zeros((3, 6))
+#
+# rmse_rec = np.zeros((3, 6))
+# rmse_ar = np.zeros((3, 6))
+#
+# horizon = np.array([1, 5, 21])
 
 # for _ in range(6):
 #     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
@@ -213,6 +213,26 @@ horizon = np.array([1, 5, 21])
 #         fmodel.save(tempdir)
 
 
+# # Forecasting performance using NN
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
+#     pca = pickle.load(open(tempdir, "rb"))
+#     f_train = pca.transform(X_train)
+#     f_test = pca.transform(X_test)
+#     for h in range(3):
+#         X_train_f, X_test_f, y_train_f, y_test_f, scfy, scfx = forecast_pre_processing(covariates=covariates,
+#                                                                                        f_train=f_train,
+#                                                                                        f_test=f_test, horizon=horizon[h])
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\PCA\PCA_" + str(_ + 1) + "f_" + str(
+#             horizon[h]) + "h"
+#         fmodel = keras.models.load_model(tempdir)
+#         X_hat_f = forecast_test(pca=pca, model=fmodel, X_test=X_test_f, scfy=scfy, sc=sc)
+#         X_hat = sc.inverse_transform(X_hat_f)
+#         y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+#         rmse_u[h, _] = ivrmse(y_test=df_unb_test.iloc[:y_hat.shape[0]].IV, y_hat=y_hat, sc_y=None)
+
+
+
 # Forecasting performance without recession 2020-02-01 - ...., USE ONLY FIRST 522 [:522]
 # for _ in range(6):
 #     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
@@ -232,26 +252,26 @@ horizon = np.array([1, 5, 21])
 #         rmse_rec[h, _] = ivrmse(y_test=df_unb_test.iloc[:y_hat.shape[0]].IV, y_hat=y_hat, sc_y=None)
 
 
-# Forecasting using VAR
-for _ in range(6):
-    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
-    pca = pickle.load(open(tempdir, "rb"))
-    f_train = pca.transform(X_train)
-    f_test = pca.transform(X_test)
-
-    scf = StandardScaler()
-    f_train = scf.fit_transform(f_train)
-    f_test = scf.transform(f_test)
-
-    model = train_VAR_model(f_train=f_train)
-    result_list = test_VAR_model(f_train=f_train, f_test=f_test, model=model)
-
-    for h in range(3):
-        f_hat_nor = result_list[h]
-        f_hat = scf.inverse_transform(f_hat_nor)
-        X_hat_f = pca.inverse_transform(f_hat)
-        rmse[h, _] = ivrmse(y_test=X_test, y_hat=X_hat_f, sc_y=sc)
-
-        X_hat = sc.inverse_transform(X_hat_f)
-        y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
-        rmse_u[h, _] = ivrmse(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)
+# # Forecasting using VAR
+# for _ in range(6):
+#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\PCA\PCA_" + str(_ + 1) + "f_0h.sav"
+#     pca = pickle.load(open(tempdir, "rb"))
+#     f_train = pca.transform(X_train)
+#     f_test = pca.transform(X_test)
+#
+#     scf = StandardScaler()
+#     f_train = scf.fit_transform(f_train)
+#     f_test = scf.transform(f_test)
+#
+#     model = train_VAR_model(f_train=f_train)
+#     result_list = test_VAR_model(f_train=f_train, f_test=f_test, model=model)
+#
+#     for h in range(3):
+#         f_hat_nor = result_list[h]
+#         f_hat = scf.inverse_transform(f_hat_nor)
+#         X_hat_f = pca.inverse_transform(f_hat)
+#         rmse[h, _] = ivrmse(y_test=X_test, y_hat=X_hat_f, sc_y=sc)
+#
+#         X_hat = sc.inverse_transform(X_hat_f)
+#         y_hat = unbalanced_test_model(df_unb=df_unb, X_hat=X_hat, split=0.8)
+#         rmse_u[h, _] = ivrmse(y_test=df_unb_test.IV, y_hat=y_hat, sc_y=None)

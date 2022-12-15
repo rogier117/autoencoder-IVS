@@ -430,15 +430,15 @@ df_unb_test = df_unb[df_unb.t > cut_off]
 # factors = np.array(factor_model(X_factor))
 
 
-# Direct forecast
-
-rmse = np.zeros((3,6))
-rmse_u = np.zeros((3,6))
-
-rmse_rec = np.zeros((3, 6))
-rmse_ar = np.zeros((3, 6))
-
-horizon = np.array([1, 5, 21])
+# # Direct forecast
+#
+# rmse = np.zeros((3,6))
+# rmse_u = np.zeros((3,6))
+#
+# rmse_rec = np.zeros((3, 6))
+# rmse_ar = np.zeros((3, 6))
+#
+# horizon = np.array([1, 5, 21])
 #
 # for h in range(3):
 #     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
@@ -459,28 +459,28 @@ horizon = np.array([1, 5, 21])
 #         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
 #         trained_model_f.save(tempdir)
 
-# Direct forecast test
-for h in range(3):
-    X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
-                                                                                                        X_test=X_test,
-                                                                                                        char_train=char_train,
-                                                                                                        char_test=char_test,
-                                                                                                        y_train=y_train,
-                                                                                                        y_test=y_test,
-                                                                                                        horizon=horizon[h])
-    X_f = X.values
-    z = np.zeros((horizon[h], X_f.shape[1]))
-    X_f = np.concatenate((z, X_f), axis=0)
-    X_f = X_f[:-horizon[h], :]
-    for _ in range(6):
-        tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
-        trained_model_f = keras.models.load_model(tempdir)
-
-        y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
-        rmse[h, _] = ivrmse(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
-
-        y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8)
-        rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
+# # Direct forecast test
+# for h in range(3):
+#     X_train_f, X_test_f, char_train_f, char_test_f, y_train_f, y_test_f = direct_forecast_preprocessing(X_train=X_train,
+#                                                                                                         X_test=X_test,
+#                                                                                                         char_train=char_train,
+#                                                                                                         char_test=char_test,
+#                                                                                                         y_train=y_train,
+#                                                                                                         y_test=y_test,
+#                                                                                                         horizon=horizon[h])
+#     X_f = X.values
+#     z = np.zeros((horizon[h], X_f.shape[1]))
+#     X_f = np.concatenate((z, X_f), axis=0)
+#     X_f = X_f[:-horizon[h], :]
+#     for _ in range(6):
+#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2d_" + str(_ + 1) + "f_" + str(horizon[h]) +"h"
+#         trained_model_f = keras.models.load_model(tempdir)
+#
+#         y_hat_f = test_ae(model=trained_model_f, X_test=X_test_f, char_test=char_test_f)
+#         rmse[h, _] = ivrmse(y_test=y_test_f, y_hat=y_hat_f, sc_y=sc_y)
+#
+#         y_hat_f_u = unbalanced_test_ae(model=trained_model_f, df_unb=df_unb, X=X_f, sc_x=sc_x, sc_c=sc_c, split=0.8)
+#         rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
 
 # # Direct forecast test until recession
 # alldates = df_unb_test.t - 4030
@@ -504,16 +504,16 @@ for h in range(3):
 #         rmse_rec[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test1.IV.values.reshape(-1, 1)), y_hat=y_hat_f_u, sc_y=sc_y)
 
 
-# rmse = np.zeros((3,6))
-# rmse_u = np.zeros((3,6))
-#
-# rmse_rec = np.zeros((3, 6))
-# rmse_ar = np.zeros((3, 6))
-#
-# horizon = np.array([1, 5, 21])
-#
-# covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
-# covariates = covariates.drop(columns='Date')
+rmse = np.zeros((3,6))
+rmse_u = np.zeros((3,6))
+
+rmse_rec = np.zeros((3, 6))
+rmse_ar = np.zeros((3, 6))
+
+horizon = np.array([1, 5, 21])
+
+covariates = pd.read_csv(r'D:\Master Thesis\autoencoder-IVS\Data\covariates.csv')
+covariates = covariates.drop(columns='Date')
 
 # Indirect forecast
 # for _ in range(6):
@@ -538,33 +538,33 @@ for h in range(3):
 #         trained_model_if.save(tempdir)
 
 
-# # Indirect forecast test
-# for _ in range(6):
-#     tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE1_" + str(_ + 1) + "f_0h"
-#     trained_model = keras.models.load_model(tempdir)
-#     trained_model._name = 'full'
-#     for h in range(3):
-#         X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
-#             covariates=covariates,
-#             X_train_in=X_train,
-#             X_test_in=X_test,
-#             model=trained_model,
-#             horizon=horizon[h])
-#
-#         tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE1i_" + str(_ + 1) + "f_" + str(
-#             horizon[h]) + "h"
-#         trained_model_if = keras.models.load_model(tempdir)
-#         trained_model_if._name = 'indirect'
-#
-#         y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
-#                                           char_test=char_test, sc_fy=sc_fy)
-#
-#         rmse[h, _] = ivrmse(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
-#
-#         y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
-#                                                 df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
-#
-#         rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
+# Indirect forecast test
+for _ in range(6):
+    tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Modelling\AE\AE2_" + str(_ + 1) + "f_0h"
+    trained_model = keras.models.load_model(tempdir)
+    trained_model._name = 'full'
+    for h in range(3):
+        X_train_if, X_test_if, y_train_if, y_test_if, partial_model, sc_fx, sc_fy = indirect_forecast_preprocessing(
+            covariates=covariates,
+            X_train_in=X_train,
+            X_test_in=X_test,
+            model=trained_model,
+            horizon=horizon[h])
+
+        tempdir = r"D:\Master Thesis\autoencoder-IVS\Models\Forecasting\AE\AE2i_" + str(_ + 1) + "f_" + str(
+            horizon[h]) + "h"
+        trained_model_if = keras.models.load_model(tempdir)
+        trained_model_if._name = 'indirect'
+
+        y_hat_if = indirect_forecast_test(trained_model=trained_model_if, partial_model=partial_model, X_test=X_test_if,
+                                          char_test=char_test, sc_fy=sc_fy)
+
+        rmse[h, _] = ivrmse(y_test=y_test, y_hat=y_hat_if, sc_y=sc_y)
+
+        y_hat_if_u = indirect_forecast_test_unb(trained_model=trained_model_if, partial_model=partial_model,
+                                                df_unb=df_unb, split=0.8, X_test=X_test_if, sc_fy=sc_fy, sc_c=sc_c)
+
+        rmse_u[h, _] = ivrmse(y_test=sc_y.transform(df_unb_test.IV.values.reshape(-1, 1)), y_hat=y_hat_if_u, sc_y=sc_y)
 
 
 # # Indirect forecast test until recession
